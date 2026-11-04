@@ -15,3 +15,6 @@ const game = new Phaser.Game({
 });
 
 game.scene.add('Race', RaceScene, true, { seed: pickSeed() });
+
+// Handy for debugging from the browser console.
+window.__game = game;

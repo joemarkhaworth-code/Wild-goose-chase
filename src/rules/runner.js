@@ -9,16 +9,18 @@ export function createRunner(runConfig) {
     height: 0,        // metres above the track (jumping)
     vy: 0,            // m/s upward
     lastSide: null,   // 'L' | 'R' | null
-    stumble: 0,       // seconds left of stumble / crash recovery
+    stumble: 0,       // seconds left of stumble (taps ignored)
+    down: 0,          // seconds left lying on the floor after a crash
     taps: 0,          // good taps (drives leg animation)
   };
 }
 
 export const isAirborne = (r) => r.height > 0;
+export const isDown = (r) => r.down > 0;
 
 // Returns what happened: 'step' | 'stumble' | 'jump' | null (ignored).
 export function applyAction(r, action) {
-  if (r.stumble > 0) return null;
+  if (r.down > 0 || r.stumble > 0) return null;
 
   if (action === 'jump') {
     if (isAirborne(r)) return null;
@@ -44,12 +46,21 @@ export function applyAction(r, action) {
   return 'step';
 }
 
-// Returns 'land' on the frame the goose touches down, otherwise null.
+// Returns 'land' | 'getUp' on the frame that happens, otherwise null.
 export function updateRunner(r, dt) {
   if (r.stumble > 0) r.stumble = Math.max(0, r.stumble - dt);
 
   let event = null;
-  if (isAirborne(r)) {
+  if (r.down > 0) {
+    // Sliding along the floor, then getting back up.
+    r.speed = Math.max(0, r.speed - r.cfg.crashFriction * dt);
+    r.down = Math.max(0, r.down - dt);
+    if (r.down === 0) {
+      r.speed = 0;
+      r.stumble = r.cfg.getUpGrace;
+      event = 'getUp';
+    }
+  } else if (isAirborne(r)) {
     // Momentum carries you through the air: no decay while airborne.
     r.vy -= r.cfg.gravity * dt;
     r.height += r.vy * dt;
@@ -66,10 +77,12 @@ export function updateRunner(r, dt) {
   return event;
 }
 
-// Crash into an obstacle. (Step 3 turns this into a ragdoll.)
+// Crash into an obstacle: the goose goes down (ragdoll) and slides.
 export function crashRunner(r) {
   r.speed *= r.cfg.crashSpeedFactor;
-  r.stumble = r.cfg.crashTime;
+  r.down = r.cfg.getUpTime;
+  r.stumble = 0;
   r.lastSide = null;
-  r.vy = Math.min(r.vy, 0);
+  r.height = 0;
+  r.vy = 0;
 }

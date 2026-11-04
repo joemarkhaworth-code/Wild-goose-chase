@@ -23,8 +23,10 @@ export const CONFIG = {
     stumbleTime: 0.35,     // seconds taps are ignored after a stumble
     jumpVelocity: 8.3,       // m/s upward on jump
     gravity: 29,           // m/s² (peak ~1.2 m, ~0.57 s in the air)
-    crashSpeedFactor: 0.15, // speed multiplied by this when hitting an obstacle
-    crashTime: 0.8,        // seconds before you can run again after a crash
+    crashSpeedFactor: 0.6, // speed kept when you hit an obstacle (you slide/tumble on)
+    crashFriction: 12,     // m/s² slowing your slide while down
+    getUpTime: 1.4,        // seconds on the floor before getting back up
+    getUpGrace: 0.25,      // seconds after getting up before taps count
   },
 
   // Track layout (metres)
@@ -56,6 +58,15 @@ export const CONFIG = {
     maxSpeedShake: 0.0015, // camera shake intensity at top speed
     stumbleShake: 0.008,
     crashShake: 0.02,
+  },
+
+  // Ragdoll (Matter.js, pixels / Matter units)
+  ragdoll: {
+    launchUp: 7,           // upward kick on crash (px per step)
+    launchForward: 0.9,    // fraction of run speed carried into the ragdoll
+    spin: 0.18,            // angular velocity given to the body
+    follow: 0.04,          // how hard the ragdoll is pulled toward the rules position
+    stiffness: 0.9,        // joint stiffness (lower = floppier)
   },
 
   // Controls

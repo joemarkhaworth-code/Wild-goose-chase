@@ -1,8 +1,9 @@
 import { CONFIG } from '../config.js';
 import { makeRng } from '../rng.js';
-import { createRunner, applyAction, updateRunner, crashRunner, isAirborne } from '../rules/runner.js';
+import { createRunner, applyAction, updateRunner, crashRunner, isAirborne, isDown } from '../rules/runner.js';
 import { generateHurdles, findCollision } from '../rules/track.js';
 import { createTouchAndKeyControls } from '../input/controls.js';
+import { spawnRagdoll } from './ragdoll.js';
 
 const PPM = CONFIG.pixelsPerMetre;
 const START_X = 200; // world x (px) of the start line
@@ -26,7 +27,11 @@ export class RaceScene extends Phaser.Scene {
     this.hurdles = generateHurdles(this.rng, CONFIG.track, CONFIG.trackLength);
     this.buildHurdles();
     this.goose = this.buildGoose();
-    this.crashAnim = 0;
+    this.ragdoll = null;
+    this.getUpAnim = 0;
+    // Physics floor for ragdolls: the running line in the middle of the track.
+    const feetY = CONFIG.groundY + 30;
+    this.matter.add.rectangle(this.worldWidth / 2, feetY + 50, this.worldWidth + 2000, 100, { isStatic: true });
     this.dust = [];
     this.lurch = 0;
     this.camLead = CONFIG.goose.screenX;
@@ -152,13 +157,15 @@ export class RaceScene extends Phaser.Scene {
     const bob = air ? 0 : Math.abs(Math.sin(phase)) * Math.min(1, r.speed / 3) * 7;
     this.goose.y = CONFIG.groundY + 30 - bob - r.height * HPX;
 
-    // Lean hard into it with speed; wobble on stumble; sprawl on a crash.
+    // Lean hard into it with speed; wobble on stumble.
     const lean = speedFrac * 22;
     const wobble = r.stumble > 0 ? Math.sin(this.time.now / 30) * 14 : 0;
     let angle = lean + wobble;
-    if (this.crashAnim > 0) {
-      const t = this.crashAnim / CONFIG.run.crashTime; // 1 -> 0
-      angle = 75 * Math.sin(Math.min(1, t * 1.4) * Math.PI / 2) + wobble * 0.3;
+    if (this.getUpAnim > 0) {
+      // Clamber back up: from lying tipped back to upright, with a dazed wobble.
+      const t = this.getUpAnim / 0.35; // 1 -> 0
+      angle = -60 * t * t + Math.sin(this.time.now / 40) * 8;
+      this.goose.setScale(1, 1 - 0.3 * t);
     }
     this.goose.setAngle(angle);
     const col = r.stumble > 0 ? CONFIG.goose.stumbleColor : CONFIG.goose.bodyColor;
@@ -185,9 +192,19 @@ export class RaceScene extends Phaser.Scene {
     for (let i = 0; i < 3; i++) this.spawnDust(this.goose.x + this.rng.range(-15, 15), CONFIG.groundY + 30);
   }
 
-  onCrash(h) {
+  // speedBefore: m/s at the moment of impact (before the rules cut it).
+  onCrash(h, speedBefore) {
     this.knockOver(h);
-    this.crashAnim = CONFIG.run.crashTime;
+    const rc = CONFIG.ragdoll;
+    this.goose.setVisible(false);
+    this.ragdoll = spawnRagdoll(
+      this,
+      this.goose.x,
+      this.goose.y,
+      { body: CONFIG.goose.bodyColor, beak: CONFIG.goose.beakColor, leg: CONFIG.goose.legColor },
+      { vx: (speedBefore * PPM / 60) * rc.launchForward, up: rc.launchUp },
+      rc,
+    );
     this.cameras.main.shake(250, CONFIG.feel.crashShake);
     for (let i = 0; i < 7; i++) this.spawnDust(this.goose.x + this.rng.range(-25, 25), CONFIG.groundY + 30);
     const bonk = this.add.text(this.goose.x, this.goose.y - 130, 'BONK!', {
@@ -197,6 +214,14 @@ export class RaceScene extends Phaser.Scene {
     this.tweens.add({
       targets: bonk, y: bonk.y - 40, alpha: 0, duration: 700, onComplete: () => bonk.destroy(),
     });
+  }
+
+  onGetUp() {
+    this.ragdoll?.destroy();
+    this.ragdoll = null;
+    this.goose.setVisible(true);
+    this.getUpAnim = 0.35;
+    for (let i = 0; i < 3; i++) this.spawnDust(this.goose.x + this.rng.range(-20, 20), CONFIG.groundY + 30);
   }
 
   onStumble() {
@@ -311,7 +336,7 @@ export class RaceScene extends Phaser.Scene {
       `FPS        ${this.game.loop.actualFps.toFixed(0)}`,
       `Round      -`,
       `Timer      -`,
-      `Goose      ${r.distance.toFixed(1)} m  ${r.speed.toFixed(1)} m/s  h ${r.height.toFixed(2)}${r.stumble > 0 ? '  STUMBLE' : ''}`,
+      `Goose      ${r.distance.toFixed(1)} m  ${r.speed.toFixed(1)} m/s  h ${r.height.toFixed(2)}${r.stumble > 0 ? '  STUMBLE' : ''}${isDown(r) ? '  DOWN ' + r.down.toFixed(1) : ''}`,
       `Next hurdle ${(this.hurdles.find((h) => h.at > r.distance)?.at ?? 0).toFixed(1)} m`,
       `Gooseliath -`,
       `Seed       ${this.seed}`,
@@ -330,20 +355,27 @@ export class RaceScene extends Phaser.Scene {
       else if (result === 'jump') this.onJump();
     }
     this.actions.length = 0;
-    if (updateRunner(r, dt) === 'land') this.onLand();
+    const ev = updateRunner(r, dt);
+    if (ev === 'land') this.onLand();
+    else if (ev === 'getUp') this.onGetUp();
 
-    const hit = findCollision(r, this.hurdles, CONFIG.track);
+    const hit = isDown(r) ? null : findCollision(r, this.hurdles, CONFIG.track);
     if (hit) {
       hit.hit = true;
+      const speedBefore = r.speed;
       crashRunner(r);
-      this.onCrash(hit);
+      this.onCrash(hit, speedBefore);
     }
-    this.crashAnim = Math.max(0, this.crashAnim - dt);
+    if (this.getUpAnim > 0) {
+      this.getUpAnim = Math.max(0, this.getUpAnim - dt);
+      if (this.getUpAnim === 0) this.goose.setScale(1);
+    }
 
     // Lurch decays back to zero quickly after each tap.
     this.lurch = Math.max(0, this.lurch - 60 * dt);
     this.goose.x = START_X + r.distance * PPM + this.lurch;
     this.animateGoose(r);
+    this.ragdoll?.update(this.goose.x);
 
     // Camera leads further ahead the faster you go.
     const frac = r.speed / CONFIG.run.maxSpeed;
