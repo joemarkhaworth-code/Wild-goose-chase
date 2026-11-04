@@ -21,8 +21,8 @@ export const CONFIG = {
     decayDrag: 0.5,        // extra loss per second, proportional to speed
     stumbleSpeedFactor: 0.5, // speed multiplied by this on a same-side tap
     stumbleTime: 0.35,     // seconds taps are ignored after a stumble
-    jumpVelocity: 8,       // m/s upward on jump
-    gravity: 32,           // m/s² (peak ~1 m, ~0.5 s in the air)
+    jumpVelocity: 8.3,       // m/s upward on jump
+    gravity: 29,           // m/s² (peak ~1.2 m, ~0.57 s in the air)
     crashSpeedFactor: 0.15, // speed multiplied by this when hitting an obstacle
     crashTime: 0.8,        // seconds before you can run again after a crash
   },
