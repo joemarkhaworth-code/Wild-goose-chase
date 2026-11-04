@@ -72,3 +72,4 @@ Later (not now)
 ## Decisions
 (Record decisions from playtesting here.)
 - Run buttons sit close together in the bottom-right, staggered like X and O on a PlayStation pad (LEFT lower-left, RIGHT upper-right). Mashing two nearby buttons is funnier and truer to Track & Field than one button per thumb.
+- Running should feel fast and punchy, Track & Field style: top speed needs ~10 alternating taps/sec, every tap gives visible kick (lurch, dust, button punch), and speed cues (track dashes, fast foreground, speed lines, segmented power meter with MAX!). Playtested and approved after step 1.
