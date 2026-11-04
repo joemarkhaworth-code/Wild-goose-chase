@@ -327,6 +327,11 @@ export class RaceScene extends Phaser.Scene {
       backgroundColor: 'rgba(0,0,0,0.55)', padding: { x: 6, y: 4 },
     }).setScrollFactor(0).setDepth(200).setVisible(false);
 
+    // Build version, bottom-centre, so you can tell a fresh deploy has loaded.
+    this.add.text(width / 2, this.scale.height - 4, `v ${window.GAME_VERSION ?? 'dev'}`, {
+      fontFamily: 'monospace', fontSize: '12px', color: '#ffffff',
+    }).setOrigin(0.5, 1).setAlpha(0.6).setScrollFactor(0).setDepth(200);
+
     const btn = this.add.text(width - 10, 10, 'DBG', {
       fontFamily: 'monospace', fontSize: '16px', color: '#ffffff',
       backgroundColor: 'rgba(0,0,0,0.4)', padding: { x: 8, y: 6 },

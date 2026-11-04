@@ -29,6 +29,19 @@
   <div id="rotate">Turn your phone sideways to run 🪿</div>
   <div id="game"></div>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
-  <script type="module" src="src/main.js"></script>
+  <script>
+    // Always run the newest deploy, even if this page is cached: ask for the
+    // version without cache, then load the code for that version.
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : { v: 'dev' }))
+      .catch(() => ({ v: 'dev' }))
+      .then(({ v }) => {
+        window.GAME_VERSION = v;
+        const s = document.createElement('script');
+        s.type = 'module';
+        s.src = 'src/main.js?v=' + v;
+        document.body.appendChild(s);
+      });
+  </script>
 </body>
 </html>

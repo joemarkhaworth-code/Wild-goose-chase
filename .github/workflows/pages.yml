@@ -24,8 +24,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Cache-bust JS so phones always get the latest code
         run: |
-          V=${GITHUB_SHA::8}
-          sed -i -E "s#src=\"src/main\.js\"#src=\"src/main.js?v=$V\"#" index.html
+          V=${GITHUB_SHA::7}
+          echo "{\"v\":\"$V\"}" > version.json
           find src -name '*.js' -exec sed -i -E "s#(from '\.[^']*\.js)'#\1?v=$V'#g" {} +
           grep -rn "?v=" index.html src | head -5
       - uses: actions/configure-pages@v5
