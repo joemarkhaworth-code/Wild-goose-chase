@@ -5,7 +5,8 @@ import { generateHurdles, findCollision } from '../rules/track.js';
 import { createTouchAndKeyControls } from '../input/controls.js';
 import { spawnRagdoll, featherBurst, launchHurdle } from './ragdoll.js';
 import { GooseRig } from './gooseRig.js';
-import { star } from './draw.js';
+import { star, setBoilFrame, BOIL, OUTLINE } from './draw.js';
+import { createFilmLook } from './filmLook.js';
 
 const PPM = CONFIG.pixelsPerMetre;
 const START_X = 200; // world x (px) of the start line
@@ -24,7 +25,9 @@ export class RaceScene extends Phaser.Scene {
     const { height } = this.scale;
     this.worldWidth = START_X + (CONFIG.trackLength + 50) * PPM;
 
-    this.cameras.main.setBackgroundColor('#8fd3ff');
+    const L = CONFIG.look;
+    this.cameras.main.setBackgroundColor(L.sky);
+    BOIL.amp = L.boilAmp;
     this.buildScenery();
     this.hurdles = generateHurdles(this.rng, CONFIG.track, CONFIG.trackLength);
     this.buildHurdles();
@@ -48,6 +51,7 @@ export class RaceScene extends Phaser.Scene {
     this.actions = [];
     createTouchAndKeyControls(this, CONFIG, (a) => this.actions.push(a));
 
+    this.film = CONFIG.look.film ? createFilmLook(this, CONFIG.look) : null;
     this.buildHud();
     this.buildSpeedLines();
     this.buildDebugOverlay();
@@ -58,53 +62,91 @@ export class RaceScene extends Phaser.Scene {
   buildScenery() {
     const { width, height } = this.scale;
     const g = CONFIG.groundY;
+    const L = CONFIG.look;
+    const O = OUTLINE;
 
-    // Far hills (slow parallax)
-    const hills = this.add.graphics().setScrollFactor(0.2).setDepth(-20);
-    hills.fillStyle(0x7cc47f, 1);
-    for (let x = -200; x < this.worldWidth * 0.2 + width + 400; x += this.rng.range(160, 320)) {
-      hills.fillCircle(x, g + 40, this.rng.range(120, 220));
+    // Far hills (slow parallax), outlined.
+    const far = this.add.graphics().setScrollFactor(0.12).setDepth(-22);
+    for (let x = -200; x < this.worldWidth * 0.12 + width + 400; x += this.rng.range(220, 380)) {
+      const r = this.rng.range(150, 230);
+      far.fillStyle(O, 1).fillCircle(x, g + 10, r + 3);
+      far.fillStyle(L.hillsFar, 1).fillCircle(x, g + 10, r);
+    }
+    const hills = this.add.graphics().setScrollFactor(0.25).setDepth(-20);
+    for (let x = -200; x < this.worldWidth * 0.25 + width + 400; x += this.rng.range(160, 320)) {
+      const r = this.rng.range(110, 200);
+      hills.fillStyle(O, 1).fillCircle(x, g + 50, r + 3);
+      hills.fillStyle(L.hills, 1).fillCircle(x, g + 50, r);
     }
 
-    // Trees (mid parallax)
-    const trees = this.add.graphics().setScrollFactor(0.6).setDepth(-10);
-    for (let x = 0; x < this.worldWidth * 0.6 + width + 400; x += this.rng.range(120, 380)) {
-      const h = this.rng.range(60, 120);
-      trees.fillStyle(0x6b4a2b, 1).fillRect(x - 6, g - h, 12, h);
-      trees.fillStyle(0x3f8f45, 1).fillCircle(x, g - h, this.rng.range(30, 50));
+    // Trees (mid parallax): each its own object so they can bounce to the beat.
+    this.trees = [];
+    for (let x = 0; x < this.worldWidth * 0.6 + width + 400; x += this.rng.range(140, 380)) {
+      const h = this.rng.range(60, 110);
+      const r = this.rng.range(28, 44);
+      const t = this.add.graphics().setScrollFactor(0.6).setDepth(-10).setPosition(x, g);
+      // Bendy rubber trunk.
+      t.fillStyle(O, 1).fillRoundedRect(-9, -h, 18, h + 2, 6);
+      t.fillStyle(L.trunk, 1).fillRoundedRect(-6, -h, 12, h, 5);
+      // Puffy canopy of three blobs.
+      for (const [dx, dy, rr] of [[-r * 0.6, 0, r * 0.75], [r * 0.6, 0, r * 0.75], [0, -r * 0.5, r]]) {
+        t.fillStyle(O, 1).fillCircle(dx, -h + dy, rr + 3);
+      }
+      for (const [dx, dy, rr] of [[-r * 0.6, 0, r * 0.75], [r * 0.6, 0, r * 0.75], [0, -r * 0.5, r]]) {
+        t.fillStyle(L.treeLeaf, 1).fillCircle(dx, -h + dy, rr);
+      }
+      t.beatOffset = this.rng.next() < 0.5 ? 0 : Math.PI / 2;
+      this.trees.push(t);
     }
 
     // Grass + track
-    this.add.rectangle(0, g, this.worldWidth, height - g, 0x5aa65e).setOrigin(0, 0).setDepth(-5);
-    this.add.rectangle(0, g, this.worldWidth, 60, 0xc8643c).setOrigin(0, 0).setDepth(-4);
+    this.add.rectangle(0, g, this.worldWidth, height - g, L.grass).setOrigin(0, 0).setDepth(-5);
+    this.add.rectangle(0, g, this.worldWidth, 60, L.track).setOrigin(0, 0).setDepth(-4);
     const lines = this.add.graphics().setDepth(-3);
-    lines.fillStyle(0xffffff, 1);
-    lines.fillRect(0, g, this.worldWidth, 3);
-    lines.fillRect(0, g + 57, this.worldWidth, 3);
+    lines.fillStyle(O, 1);
+    lines.fillRect(0, g - 2, this.worldWidth, 3);
+    lines.fillStyle(0xfff4dc, 1);
+    lines.fillRect(0, g + 1, this.worldWidth, 3);
+    lines.fillRect(0, g + 56, this.worldWidth, 3);
+    lines.fillStyle(O, 1);
+    lines.fillRect(0, g + 59, this.worldWidth, 2);
 
     // Dashes on the track every 2 m: strong motion cue at speed.
-    lines.fillStyle(0xe58a5e, 1);
+    lines.fillStyle(L.trackDash, 1);
     for (let x = 0; x < this.worldWidth; x += 2 * PPM) lines.fillRect(x, g + 26, 30, 6);
 
     // Start line
-    this.add.rectangle(START_X, g, 6, 60, 0xffffff).setOrigin(0.5, 0).setDepth(-3);
+    this.add.rectangle(START_X, g, 6, 60, 0xfff4dc).setOrigin(0.5, 0).setDepth(-3);
 
     // Distance markers
     for (let m = CONFIG.markerEvery; m <= CONFIG.trackLength; m += CONFIG.markerEvery) {
       const x = START_X + m * PPM;
-      this.add.rectangle(x, g, 3, 60, 0xffffff, 0.7).setOrigin(0.5, 0).setDepth(-3);
+      this.add.rectangle(x, g, 3, 60, 0xfff4dc, 0.7).setOrigin(0.5, 0).setDepth(-3);
       this.add.text(x, g + 66, `${m}m`, {
-        fontFamily: FONT, fontSize: '16px', color: '#ffffff',
+        fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#fff4dc', stroke: '#1d2b1f', strokeThickness: 4,
       }).setOrigin(0.5, 0).setDepth(-3);
     }
 
     // Foreground grass tufts: scroll faster than the track, so speed reads hard.
     const fg = this.add.graphics().setScrollFactor(1.6).setDepth(20);
-    fg.fillStyle(0x3d7d40, 1);
     for (let x = 0; x < this.worldWidth * 1.6 + width + 400; x += this.rng.range(60, 200)) {
       const y = this.rng.range(height - 30, height + 10);
       const w = this.rng.range(14, 30);
-      fg.fillTriangle(x, y, x + w / 2, y - this.rng.range(20, 40), x + w, y);
+      const top = y - this.rng.range(20, 40);
+      fg.fillStyle(O, 1).fillTriangle(x - 3, y + 2, x + w / 2, top - 4, x + w + 3, y + 2);
+      fg.fillStyle(0x5f8a45, 1).fillTriangle(x, y, x + w / 2, top, x + w, y);
+    }
+  }
+
+  // Trees squash and stretch to the beat, like everything in a 1930s cartoon.
+  updateTrees(t) {
+    const beat = t * (CONFIG.goose.bpm / 60) * Math.PI;
+    const amt = CONFIG.look.treeBounce;
+    const camX = this.cameras.main.scrollX * 0.6;
+    for (const tree of this.trees) {
+      if (tree.x < camX - 200 || tree.x > camX + this.scale.width + 200) continue;
+      const k = Math.sin(beat * 2 + tree.beatOffset);
+      tree.setScale(1 - k * amt * 0.6, 1 + k * amt);
     }
   }
 
@@ -182,6 +224,7 @@ export class RaceScene extends Phaser.Scene {
       { vx: (speed * PPM / 60) * rc.launchForward, up: kind.up, spin: kind.spin },
       rc,
       (x, y, strength) => this.onRagdollImpact(x, y, strength),
+      CONFIG.goose.drawScale,
     );
   }
 
@@ -307,7 +350,7 @@ export class RaceScene extends Phaser.Scene {
         line.x = width + this.fx.range(0, 200);
         line.y = this.fx.range(110, CONFIG.groundY - 10);
       }
-      line.setFillStyle(0xffffff, alpha);
+      line.setFillStyle(0x1d2b1f, alpha * 0.55);
     }
   }
 
@@ -351,6 +394,12 @@ export class RaceScene extends Phaser.Scene {
   update(_time, deltaMs) {
     const dt = Math.min(deltaMs / 1000, 0.05);
     const r = this.runner;
+
+    // Hand-drawn frame counter drives line boil and film flicker.
+    const frame = Math.floor((this.time.now / 1000) * CONFIG.look.boilFps);
+    setBoilFrame(frame);
+    this.film?.update(frame);
+    this.updateTrees(this.time.now / 1000);
 
     // Hit-stop: freeze everything for a beat on impact, then launch the ragdoll.
     if (this.hitStop > 0) {

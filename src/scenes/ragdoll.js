@@ -3,12 +3,12 @@
 // Purely presentation: the rules (runner.js) decide where the goose ends up;
 // the ragdoll is steered toward that so getting up doesn't teleport.
 
-import { add, rot, smooth, tube, ellipse, circle, beak, eye } from './draw.js';
+import { add, rot, smooth, tube, ellipse, circle, beak, pieEye, glove } from './draw.js';
 
 const GROUP = -1; // negative group: ragdoll parts never collide with each other
 const v = (x, y) => ({ x, y });
 
-export function spawnRagdoll(scene, x, feetY, colors, launch, cfg, onImpact) {
+export function spawnRagdoll(scene, x, feetY, colors, launch, cfg, onImpact, drawScale = 1) {
   const M = scene.matter;
   const Body = Phaser.Physics.Matter.Matter.Body;
   const opts = (extra = {}) => ({
@@ -57,10 +57,15 @@ export function spawnRagdoll(scene, x, feetY, colors, launch, cfg, onImpact) {
   let impactCool = 0;
   let squash = 0;
 
+  // Drawn scaled about (torso x, floor) so it stays on the floor and centred on
+  // the torso while looking as big as the running goose.
+  const S = drawScale;
+  const toWorld = (p) => ({ x: torso.position.x + (p.x - torso.position.x) * S, y: feetY + (p.y - feetY) * S });
+
   return {
-    get head() { return head.position; },
+    get head() { return toWorld(head.position); },
     get angle() { return torso.angle; },
-    get torso() { return torso.position; },
+    get torso() { return toWorld(torso.position); },
 
     // targetX: where the rules say the goose is (px); targetVx: rules speed (px per step).
     update(targetX, targetVx, dt) {
@@ -77,7 +82,8 @@ export function spawnRagdoll(scene, x, feetY, colors, launch, cfg, onImpact) {
         const strength = Math.min(1, prevVy / 12);
         squash = 0.25 + strength * 0.25;
         impactCool = 0.15;
-        onImpact?.(torso.position.x, torso.position.y + 18, strength);
+        const w = toWorld({ x: torso.position.x, y: torso.position.y + 18 });
+        onImpact?.(w.x, w.y, strength);
       }
       prevVy = vy;
       squash = Math.max(0, squash - dt * 2.5);
@@ -85,6 +91,7 @@ export function spawnRagdoll(scene, x, feetY, colors, launch, cfg, onImpact) {
 
     draw(t) {
       g.clear();
+      g.setScale(S).setPosition(torso.position.x * (1 - S), feetY * (1 - S));
       const vel = torso.velocity;
       const speed = Math.hypot(vel.x, vel.y);
       const stretch = Math.min(0.3, speed * 0.02);
@@ -92,11 +99,12 @@ export function spawnRagdoll(scene, x, feetY, colors, launch, cfg, onImpact) {
       const drawLeg = (i) => {
         const pts = smooth([wp(torso, i ? 6 : -6, 14), legs[i].position, wp(legs[i], 0, 19)], 3);
         tube(g, pts, 7, colors.leg);
-        ellipse(g, feet[i].position, 20, 8, feet[i].angle, colors.leg);
+        ellipse(g, feet[i].position, 28, 11, feet[i].angle, colors.leg);
       };
       const drawWing = (i) => {
-        const pts = smooth([wp(torso, i ? 2 : -2, -8), wings[i].position, wp(wings[i], -15, 0)], 3);
-        tube(g, pts, 11, colors.wing);
+        const tip = wp(wings[i], -15, 0);
+        tube(g, smooth([wp(torso, i ? 2 : -2, -8), wings[i].position, tip], 3), 9, colors.wing);
+        glove(g, tip, wings[i].angle + Math.PI, 1);
       };
 
       drawLeg(1);
@@ -107,9 +115,10 @@ export function spawnRagdoll(scene, x, feetY, colors, launch, cfg, onImpact) {
       g.fillStyle(colors.body, 1).fillCircle(tail.x, tail.y, 6);
       ellipse(g, torso.position, 64 * (1 + stretch + squash), 40 * (1 - stretch * 0.6 - squash),
         torso.angle, colors.body);
-      circle(g, head.position, 14, colors.body);
-      beak(g, head.position, 14, head.angle, 0.8, colors.beak); // screaming
-      eye(g, add(head.position, rot(v(2, -5), head.angle)), 6, 0, 'x', t);
+      circle(g, head.position, 16, colors.body);
+      beak(g, head.position, 16, head.angle, 0.8, colors.beak); // screaming
+      pieEye(g, add(head.position, rot(v(9, -7), head.angle)), 9, 14, 0, 'x', t);
+      pieEye(g, add(head.position, rot(v(0, -6), head.angle)), 10, 15, 0, 'x', t);
       drawLeg(0);
       drawWing(0);
     },

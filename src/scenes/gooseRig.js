@@ -2,7 +2,7 @@
 // stretches, overlaps and follows through like a classic cartoon.
 // Purely presentation; fed by the rules each frame.
 
-import { add, sub, mul, rot, quad, tube, ellipse, circle, beak, eye, star } from './draw.js';
+import { add, sub, mul, rot, quad, tube, ellipse, circle, beak, star, pieEye, glove } from './draw.js';
 
 const v = (x, y) => ({ x, y });
 
@@ -43,9 +43,11 @@ export class GooseRig {
 
   // Pop back up from a ragdoll pose: springs start where the ragdoll lay.
   getUpFrom(rag) {
+    // Ragdoll positions are world space; the rig draws scaled about its feet.
+    const S = this.cfg.drawScale;
     const shoulder = this.shoulderWorld();
-    this.headX.v = rag.head.x - shoulder.x;
-    this.headY.v = rag.head.y - shoulder.y;
+    this.headX.v = this.x + (rag.head.x - this.x) / S - shoulder.x;
+    this.headY.v = this.y + (rag.head.y - this.y) / S - shoulder.y;
     this.headX.vel = 0; this.headY.vel = -150;
     let a = rag.angle % (Math.PI * 2);
     if (a > Math.PI) a -= Math.PI * 2;
@@ -94,16 +96,22 @@ export class GooseRig {
     const g = this.g;
     g.clear();
     if (!this.visible) return;
+    // Draw in model space, scaled up about the feet so it stays on the ground.
+    const S = this.cfg.drawScale;
+    g.setScale(S).setPosition(this.x * (1 - S), this.y * (1 - S));
     const { colors, cfg } = this;
     const s = this.s;
     const sf = s.speedFrac;
     const t = this.time;
     const moving = Math.min(1, s.speedPx / 80);
 
-    const bob = s.air ? 0 : Math.abs(Math.sin(s.phase)) * moving * 6;
+    // Idle: bounce to the beat like a 1930s cartoon (everything's alive).
+    const idle = s.air ? 0 : 1 - moving;
+    const beat = t * (cfg.bpm / 60) * Math.PI;
+    const bob = s.air ? 0 : Math.abs(Math.sin(s.phase)) * moving * 6 + idle * Math.abs(Math.sin(beat)) * 7;
     const body = this.bodyCentre(bob);
-    const tilt = this.tilt.v;
-    const sq = this.squash.v;
+    const tilt = this.tilt.v + idle * Math.sin(beat) * 0.06;
+    const sq = this.squash.v + idle * 0.09 * Math.cos(beat * 2);
     const bw = 64 * (1 + sq + sf * 0.08), bh = 40 * (1 - sq);
 
     // Legs: noodles from hip to a foot that loops round like a wheel.
@@ -134,10 +142,11 @@ export class GooseRig {
       // Arm-pump: swings down-forward and back-up with the stride.
       const a = s.air
         ? -2.4 + Math.sin(t * 30 + off) * 0.8
-        : Math.PI * 0.6 + Math.sin(s.phase + off + Math.PI) * (0.2 + 1.0 * sf) * moving;
-      const tip = add(anchor, v(Math.cos(a) * 24, Math.sin(a) * 24));
+        : Math.PI * 0.6 + Math.sin(s.phase + off + Math.PI) * (0.2 + 1.0 * sf) * moving
+          + idle * Math.sin(beat + off) * 0.35;
+      const tip = add(anchor, v(Math.cos(a) * 26, Math.sin(a) * 26));
       const ctrl = add(mul(add(anchor, tip), 0.5), rot(v(0, -7), a - Math.PI / 2));
-      return quad(anchor, ctrl, tip, 8);
+      return { pts: quad(anchor, ctrl, tip, 8), tip, a };
     });
 
     const shoulder = add(body, rot(v(bw * 0.34, -bh * 0.25), tilt));
@@ -151,12 +160,17 @@ export class GooseRig {
 
     const drawLeg = (L) => {
       tube(g, quad(L.hip, L.ctrl, L.foot, 10), 7, colors.leg);
-      ellipse(g, add(L.foot, v(6, -2)), 20, 8, s.air ? 0.4 : Math.sin(L.p) * 0.3, colors.leg);
+      // Big clown-shoe feet.
+      ellipse(g, add(L.foot, v(8, -3)), 28, 11, s.air ? 0.4 : Math.sin(L.p) * 0.3, colors.leg);
+    };
+    const drawWing = (W) => {
+      tube(g, W.pts, 9, colors.wing);
+      glove(g, W.tip, W.a, 1);
     };
 
     // Back leg + wing, neck, body, tail, head, front leg + wing.
     drawLeg(legs[1]);
-    tube(g, wings[1], 10, colors.wing);
+    drawWing(wings[1]);
     tube(g, neckPts, 13, colors.body);
     const tail = add(body, rot(v(-bw * 0.48, -bh * 0.2), tilt));
     g.fillStyle(0x1d2b1f, 1);
@@ -164,24 +178,31 @@ export class GooseRig {
     g.fillStyle(colors.body, 1);
     g.fillTriangle(tail.x - 14, tail.y - 8, tail.x + 4, tail.y - 2, tail.x + 4, tail.y + 6);
     ellipse(g, body, bw, bh, tilt, colors.body);
-    circle(g, head, 14, colors.body);
+    const HR = 16;
+    circle(g, head, HR, colors.body);
     const open = sf > 0.85 ? 0.55 + Math.sin(t * 28) * 0.25 : 0.06 + sf * 0.15;
-    beak(g, head, 14, beakA, open, colors.beak);
-    const eyeC = add(head, rot(v(2, -5), beakA));
-    eye(g, eyeC, 6, beakA, this.dazed > 0 ? 'dazed' : 'normal', t);
+    beak(g, head, HR, beakA, open, colors.beak);
+    // Two tall pie-cut eyes, the far one peeking past the near one.
+    const mode = this.dazed > 0 ? 'dazed' : 'normal';
+    const eyeFar = add(head, rot(v(9, -7), beakA));
+    const eyeNear = add(head, rot(v(0, -6), beakA));
+    pieEye(g, eyeFar, 9, 14, beakA, mode, t + 0.3);
+    pieEye(g, eyeNear, 10, 15, beakA, mode, t);
     if (sf > 0.55 && this.dazed === 0) {
-      // Determined brow.
-      const b0 = add(eyeC, rot(v(-7, -9), beakA)), b1 = add(eyeC, rot(v(7, -5), beakA));
+      // Determined brows.
       g.lineStyle(3, 0x1d2b1f, 1);
-      g.lineBetween(b0.x, b0.y, b1.x, b1.y);
+      for (const e of [eyeNear, eyeFar]) {
+        const b0 = add(e, rot(v(-6, -11), beakA)), b1 = add(e, rot(v(5, -7), beakA));
+        g.lineBetween(b0.x, b0.y, b1.x, b1.y);
+      }
     }
     drawLeg(legs[0]);
-    tube(g, wings[0], 10, colors.wing);
+    drawWing(wings[0]);
 
     if (this.dazed > 0) {
       for (let i = 0; i < 3; i++) {
         const a = t * 6 + (i * Math.PI * 2) / 3;
-        star(g, add(head, v(Math.cos(a) * 24, -20 + Math.sin(a) * 7)), 6, t * 4, 0xffd23f);
+        star(g, add(head, v(Math.cos(a) * 26, -24 + Math.sin(a) * 7)), 6, t * 4, 0xffd23f);
       }
     }
   }

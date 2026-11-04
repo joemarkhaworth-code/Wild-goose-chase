@@ -46,12 +46,14 @@ export const CONFIG = {
     screenXFast: 0.18,     // ...and at top speed (camera looks ahead)
     legCycle: 3.2,         // leg swings per metre (higher = busier legs)
     legLen: 38,            // px, hip to foot
+    drawScale: 1.3,        // goose + ragdoll drawn this much bigger (visual only, hitboxes unchanged)
     neckStiffness: 150,    // head spring (lower = floppier, more lag)
     neckDamping: 7,        // lower = more wobble/overshoot
     neckFlop: 0.8,         // radians the neck flops back at top speed
     neckStretch: 0.4,      // neck gets this much longer at top speed (rubber!)
     neckInertia: 0.35,     // how much speeding up/slowing down throws the head
     dazedTime: 0.9,        // seconds of spinning eyes after getting up
+    bpm: 112,              // idle bounce tempo (jazz!) - trees bounce to it too
     bodyColor: 0xf4f1e6,
     wingColor: 0xffffff,
     beakColor: 0xf2a33a,
@@ -81,6 +83,28 @@ export const CONFIG = {
     friction: 0.05,        // low so it slides and rolls along the track
     restitution: 0.35,     // bounciness
     stiffness: 0.6,        // joint stiffness (lower = floppier)
+  },
+
+  // 1930s cartoon look
+  look: {
+    sky: 0xf2e3bd,         // creamy, faded
+    hills: 0xa9bf8e,
+    hillsFar: 0xc4cfa0,
+    treeLeaf: 0x6f9a55,
+    trunk: 0x7a5232,
+    grass: 0x8fae6b,
+    track: 0xc66e45,
+    trackDash: 0xdf9a6c,
+    boilFps: 12,           // line boil / film flicker rate (hand-drawn frames per second)
+    boilAmp: 0.9,          // px of outline jitter
+    film: true,            // old-film overlay
+    toneColor: 0xffd9a0,   // sepia multiply
+    toneAlpha: 0.22,
+    vignette: 0.55,
+    grain: 0.12,
+    flicker: 0.05,
+    scratchChance: 0.12,
+    treeBounce: 0.07,      // trees squash and stretch to the beat
   },
 
   // Controls
