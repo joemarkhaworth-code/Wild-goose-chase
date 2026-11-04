@@ -8,9 +8,9 @@ export function spawnRagdoll(scene, x, feetY, colors, launch, cfg) {
   const M = scene.matter;
   const opts = (extra = {}) => ({
     collisionFilter: { group: GROUP },
-    friction: 0.6,
+    friction: cfg.friction,
     frictionAir: 0.01,
-    restitution: 0.25,
+    restitution: cfg.restitution,
     ...extra,
   });
 
@@ -40,15 +40,18 @@ export function spawnRagdoll(scene, x, feetY, colors, launch, cfg) {
   // Fling it: forward with the goose's momentum, up, and spinning.
   const parts = [torso, neck, head, legA, legB];
   for (const p of parts) p.setVelocity(launch.vx, -launch.up);
-  torso.setAngularVelocity(cfg.spin);
+  torso.setAngularVelocity(launch.spin);
   head.setVelocity(launch.vx * 1.3, -launch.up * 1.2);
 
   return {
     torso, head, beak, eye, parts, joints,
-    update(targetX) {
-      // Pull the torso toward where the rules say the goose is.
-      const dx = targetX - torso.x;
-      torso.setVelocityX(torso.body.velocity.x + dx * cfg.follow * 0.1);
+    // targetX: where the rules say the goose is (px); targetVx: rules speed (px per step).
+    update(targetX, targetVx) {
+      // Steer the torso's horizontal velocity toward the rules' speed, plus a
+      // little correction for drift. Everything else stays floppy physics.
+      const want = targetVx + (targetX - torso.x) * 0.05;
+      const vx = torso.body.velocity.x;
+      torso.setVelocityX(vx + (want - vx) * cfg.follow);
       // Tail rides on the torso; beak and eye ride on the head.
       const t = torso.rotation;
       tail.setPosition(torso.x - Math.cos(t) * 34, torso.y - Math.sin(t) * 34).setRotation(t);

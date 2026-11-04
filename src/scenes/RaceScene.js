@@ -193,8 +193,8 @@ export class RaceScene extends Phaser.Scene {
   }
 
   // speedBefore: m/s at the moment of impact (before the rules cut it).
-  onCrash(h, speedBefore) {
-    this.knockOver(h);
+  // Swap the goose for a ragdoll. kind: CONFIG.ragdoll.crash | CONFIG.ragdoll.trip
+  goRagdoll(speed, kind) {
     const rc = CONFIG.ragdoll;
     this.goose.setVisible(false);
     this.ragdoll = spawnRagdoll(
@@ -202,9 +202,14 @@ export class RaceScene extends Phaser.Scene {
       this.goose.x,
       this.goose.y,
       { body: CONFIG.goose.bodyColor, beak: CONFIG.goose.beakColor, leg: CONFIG.goose.legColor },
-      { vx: (speedBefore * PPM / 60) * rc.launchForward, up: rc.launchUp },
+      { vx: (speed * PPM / 60) * rc.launchForward, up: kind.up, spin: kind.spin },
       rc,
     );
+  }
+
+  onCrash(h, speedBefore) {
+    this.knockOver(h);
+    this.goRagdoll(speedBefore, CONFIG.ragdoll.crash);
     this.cameras.main.shake(250, CONFIG.feel.crashShake);
     for (let i = 0; i < 7; i++) this.spawnDust(this.goose.x + this.rng.range(-25, 25), CONFIG.groundY + 30);
     const bonk = this.add.text(this.goose.x, this.goose.y - 130, 'BONK!', {
@@ -225,6 +230,7 @@ export class RaceScene extends Phaser.Scene {
   }
 
   onStumble() {
+    this.goRagdoll(this.runner.speed, CONFIG.ragdoll.trip);
     this.cameras.main.shake(180, CONFIG.feel.stumbleShake);
     for (let i = 0; i < 4; i++) this.spawnDust(this.goose.x + this.rng.range(-20, 20), CONFIG.groundY + 30);
   }
@@ -375,7 +381,7 @@ export class RaceScene extends Phaser.Scene {
     this.lurch = Math.max(0, this.lurch - 60 * dt);
     this.goose.x = START_X + r.distance * PPM + this.lurch;
     this.animateGoose(r);
-    this.ragdoll?.update(this.goose.x);
+    this.ragdoll?.update(this.goose.x, (r.speed * PPM) / 60);
 
     // Camera leads further ahead the faster you go.
     const frac = r.speed / CONFIG.run.maxSpeed;

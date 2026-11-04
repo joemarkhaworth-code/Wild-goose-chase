@@ -19,14 +19,15 @@ export const CONFIG = {
     maxSpeed: 14,          // m/s cap
     decayLinear: 4,        // m/s lost per second, always
     decayDrag: 0.5,        // extra loss per second, proportional to speed
-    stumbleSpeedFactor: 0.5, // speed multiplied by this on a same-side tap
-    stumbleTime: 0.35,     // seconds taps are ignored after a stumble
+    stumbleSpeedFactor: 0.85, // speed kept when you trip (same-side tap) and faceplant
+    stumbleDownTime: 0.8,  // seconds on the floor after a trip
     jumpVelocity: 8.3,       // m/s upward on jump
     gravity: 29,           // m/s² (peak ~1.2 m, ~0.57 s in the air)
-    crashSpeedFactor: 0.6, // speed kept when you hit an obstacle (you slide/tumble on)
-    crashFriction: 12,     // m/s² slowing your slide while down
-    getUpTime: 1.4,        // seconds on the floor before getting back up
-    getUpGrace: 0.25,      // seconds after getting up before taps count
+    crashSpeedFactor: 0.95, // speed kept when you hit an obstacle: momentum carries the tumble
+    crashFriction: 5,      // m/s² slowing your tumble while down
+    getUpTime: 1.5,        // seconds on the floor after hitting an obstacle
+    getUpKeep: 0.6,        // fraction of leftover tumble speed you keep when you get up
+    getUpGrace: 0.2,       // seconds after getting up before taps count
   },
 
   // Track layout (metres)
@@ -62,10 +63,12 @@ export const CONFIG = {
 
   // Ragdoll (Matter.js, pixels / Matter units)
   ragdoll: {
-    launchUp: 7,           // upward kick on crash (px per step)
-    launchForward: 0.9,    // fraction of run speed carried into the ragdoll
-    spin: 0.18,            // angular velocity given to the body
-    follow: 0.04,          // how hard the ragdoll is pulled toward the rules position
+    crash: { up: 8, spin: 0.22 },  // hurdle hit: big launch and spin (px per step)
+    trip: { up: 3, spin: 0.3 },    // same-side tap: low faceplant
+    launchForward: 1.0,    // fraction of run speed carried into the ragdoll
+    follow: 0.12,          // how hard the torso tracks the rules speed/position (0..1)
+    friction: 0.05,        // low so it slides and rolls along the track
+    restitution: 0.35,     // bounciness
     stiffness: 0.9,        // joint stiffness (lower = floppier)
   },
 

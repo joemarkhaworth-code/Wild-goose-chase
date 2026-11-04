@@ -9,7 +9,7 @@ export function createRunner(runConfig) {
     height: 0,        // metres above the track (jumping)
     vy: 0,            // m/s upward
     lastSide: null,   // 'L' | 'R' | null
-    stumble: 0,       // seconds left of stumble (taps ignored)
+    stumble: 0,       // seconds left of post-get-up grace (taps ignored)
     down: 0,          // seconds left lying on the floor after a crash
     taps: 0,          // good taps (drives leg animation)
   };
@@ -34,10 +34,8 @@ export function applyAction(r, action) {
 
   const side = action === 'tapLeft' ? 'L' : 'R';
   if (side === r.lastSide) {
-    // Same side twice: stumble.
-    r.speed *= r.cfg.stumbleSpeedFactor;
-    r.stumble = r.cfg.stumbleTime;
-    r.lastSide = null; // either foot can restart the rhythm
+    // Same side twice: trip and faceplant (ragdoll), momentum carries on.
+    fall(r, r.cfg.stumbleSpeedFactor, r.cfg.stumbleDownTime);
     return 'stumble';
   }
   r.lastSide = side;
@@ -56,7 +54,7 @@ export function updateRunner(r, dt) {
     r.speed = Math.max(0, r.speed - r.cfg.crashFriction * dt);
     r.down = Math.max(0, r.down - dt);
     if (r.down === 0) {
-      r.speed = 0;
+      r.speed *= r.cfg.getUpKeep; // scramble up still moving
       r.stumble = r.cfg.getUpGrace;
       event = 'getUp';
     }
@@ -77,12 +75,17 @@ export function updateRunner(r, dt) {
   return event;
 }
 
-// Crash into an obstacle: the goose goes down (ragdoll) and slides.
-export function crashRunner(r) {
-  r.speed *= r.cfg.crashSpeedFactor;
-  r.down = r.cfg.getUpTime;
+// Go down (ragdoll) keeping some speed, and tumble along for downTime seconds.
+function fall(r, keep, downTime) {
+  r.speed *= keep;
+  r.down = downTime;
   r.stumble = 0;
   r.lastSide = null;
   r.height = 0;
   r.vy = 0;
+}
+
+// Crash into an obstacle.
+export function crashRunner(r) {
+  fall(r, r.cfg.crashSpeedFactor, r.cfg.getUpTime);
 }
