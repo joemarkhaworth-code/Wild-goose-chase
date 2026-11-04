@@ -2,6 +2,12 @@ import { CONFIG } from './config.js';
 import { pickSeed } from './rng.js';
 import { RaceScene } from './scenes/RaceScene.js';
 
+// Wait (briefly) for the cartoon font so text doesn't render in a fallback.
+await Promise.race([
+  document.fonts.load('40px "Luckiest Guy"').catch(() => {}),
+  new Promise((r) => setTimeout(r, 2500)),
+]);
+
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',

@@ -2,9 +2,16 @@
 // stretches, overlaps and follows through like a classic cartoon.
 // Purely presentation; fed by the rules each frame.
 
-import { add, sub, mul, rot, quad, tube, ellipse, circle, beak, star, pieEye, glove } from './draw.js';
+import {
+  add, sub, mul, rot, quad, tube, ellipse, circle, beak, star, pieEye,
+  flipper, featherFan, drop,
+} from './draw.js';
 
 const v = (x, y) => ({ x, y });
+const smoothstep = (a, b, x) => {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
 
 // Damped spring (semi-implicit Euler with substeps so stiff springs stay stable).
 class Spring {
@@ -29,10 +36,13 @@ export class GooseRig {
     this.headY = new Spring(-44, cfg.neckStiffness, cfg.neckDamping);
     this.squash = new Spring(0, 420, 13); // + = squashed flat, - = stretched tall
     this.tilt = new Spring(0, 160, 12);   // body lean (radians, + = nose down)
+    this.look = new Spring(0, 90, 11);    // 0 = looking ahead, 1 = looking back in panic
     this.prevSpeedPx = 0;
     this.time = 0;
     this.dazed = 0;
     this.visible = true;
+    this.drops = [];                      // sweat drops (model space)
+    this.dropTimer = 0;
   }
 
   // --- impulses from gameplay events ---
@@ -54,6 +64,7 @@ export class GooseRig {
     if (a < -Math.PI) a += Math.PI * 2;
     this.tilt.v = Math.max(-1.4, Math.min(1.4, a));
     this.squash.v = 0.35;
+    this.look.v = 0;
     this.dazed = this.cfg.dazedTime;
   }
 
@@ -73,21 +84,43 @@ export class GooseRig {
     this.x = s.x; this.y = s.y;
     if (this.dazed > 0) this.dazed = Math.max(0, this.dazed - dt);
     const sf = s.speedFrac;
+    const cfg = this.cfg;
 
     // Inertia: speeding up throws the head back, slowing down throws it forward.
     const accel = (s.speedPx - this.prevSpeedPx) / Math.max(dt, 1e-3);
     this.prevSpeedPx = s.speedPx;
-    this.headX.vel -= accel * dt * this.cfg.neckInertia;
+    this.headX.vel -= accel * dt * cfg.neckInertia;
 
-    // Targets. At speed the neck flops right back and stretches like rubber.
-    const flop = sf * this.cfg.neckFlop;
-    const restLen = 46 * (1 + this.cfg.neckStretch * sf);
+    // Targets. At speed the neck flops right back, nearly flat, and stretches
+    // like rubber while the goose looks back over its shoulder in panic.
+    const flop = Math.pow(sf, 1.3) * cfg.neckFlop;
+    const restLen = 46 * (1 + cfg.neckStretch * sf);
     const rest = rot(v(0.22 * restLen, -0.97 * restLen), -flop);
     this.headX.step(rest.x, dt);
     this.headY.step(rest.y, dt);
     this.squash.step(0, dt);
     this.squash.v = Math.max(-0.35, Math.min(0.4, this.squash.v));
-    this.tilt.step(sf * 0.22, dt);
+    this.tilt.step(sf * 0.12, dt);
+    this.look.step(this.dazed > 0 ? 0 : smoothstep(cfg.panicFrom, cfg.panicFull, sf), dt);
+
+    // Sweat drops fly off when panicking.
+    this.dropTimer -= dt;
+    if (this.look.v > 0.5 && this.dropTimer <= 0 && !s.air) {
+      this.dropTimer = 0.09;
+      const head = this.headModel ?? v(this.x, this.y - 100);
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.2;
+      this.drops.push({
+        p: add(head, rot(v(18, 0), a)),
+        vel: add(rot(v(140, 0), a), v(-120 * sf, 0)),
+        life: 0.45,
+      });
+    }
+    for (const d of this.drops) {
+      d.vel.y += 600 * dt;
+      d.p = add(d.p, mul(d.vel, dt));
+      d.life -= dt;
+    }
+    this.drops = this.drops.filter((d) => d.life > 0);
 
     this.s = s;
   }
@@ -104,6 +137,7 @@ export class GooseRig {
     const sf = s.speedFrac;
     const t = this.time;
     const moving = Math.min(1, s.speedPx / 80);
+    const panic = this.look.v;
 
     // Idle: bounce to the beat like a 1930s cartoon (everything's alive).
     const idle = s.air ? 0 : 1 - moving;
@@ -112,11 +146,12 @@ export class GooseRig {
     const body = this.bodyCentre(bob);
     const tilt = this.tilt.v + idle * Math.sin(beat) * 0.06;
     const sq = this.squash.v + idle * 0.09 * Math.cos(beat * 2);
-    const bw = 64 * (1 + sq + sf * 0.08), bh = 40 * (1 - sq);
+    // Stretch long and low with speed.
+    const bw = 64 * (1 + sq + sf * cfg.bodyStretch), bh = 40 * (1 - sq - sf * cfg.bodyStretch * 0.35);
 
     // Legs: noodles from hip to a foot that loops round like a wheel.
     const legs = [0, Math.PI].map((off, i) => {
-      const hip = add(body, rot(v(i ? 6 : -6, bh * 0.3), tilt));
+      const hip = add(body, rot(v(i ? 8 : -4, bh * 0.3), tilt));
       let foot;
       if (s.air) {
         // Cartoon scramble: legs keep pedalling in mid-air.
@@ -124,26 +159,26 @@ export class GooseRig {
         foot = add(hip, v(Math.cos(p) * 16, cfg.legLen * 0.75 + Math.sin(p) * 8));
       } else {
         const p = s.phase + off;
-        const stride = (8 + 26 * sf) * moving;
-        const lift = (6 + 20 * sf) * moving;
+        const stride = (8 + 34 * sf) * moving;
+        const lift = (6 + 18 * sf) * moving;
         foot = v(hip.x + Math.cos(p) * stride, this.y - Math.max(0, Math.sin(p)) * lift);
       }
       const d = sub(foot, hip);
       const l = Math.hypot(d.x, d.y) || 1;
       // Knees bow forward; more bend when the leg is scrunched up.
       const bend = 6 + Math.max(0, cfg.legLen - l) * 0.9;
-      const ctrl = add(mul(add(hip, foot), 0.5), v((-d.y / l) * -bend + 4, (d.x / l) * bend * 0.2));
+      const ctrl = add(mul(add(hip, foot), 0.5), v((d.y / l) * bend + 4, (-d.x / l) * bend * 0.2));
       return { hip, foot, ctrl, p: s.phase + off };
     });
 
-    // Wings pump like arms; in the air they flap wildly.
+    // Wings: arm-pump with the stride; flap wildly in the air; fling back in panic.
     const wings = [0, Math.PI].map((off) => {
-      const anchor = add(body, rot(v(4, -6), tilt));
-      // Arm-pump: swings down-forward and back-up with the stride.
-      const a = s.air
+      const anchor = add(body, rot(v(6, -8), tilt));
+      let a = s.air
         ? -2.4 + Math.sin(t * 30 + off) * 0.8
         : Math.PI * 0.6 + Math.sin(s.phase + off + Math.PI) * (0.2 + 1.0 * sf) * moving
           + idle * Math.sin(beat + off) * 0.35;
+      a += panic * (Math.PI * 0.35 - a) * 0.5 * (1 - (s.air ? 1 : 0));
       const tip = add(anchor, v(Math.cos(a) * 26, Math.sin(a) * 26));
       const ctrl = add(mul(add(anchor, tip), 0.5), rot(v(0, -7), a - Math.PI / 2));
       return { pts: quad(anchor, ctrl, tip, 8), tip, a };
@@ -151,53 +186,61 @@ export class GooseRig {
 
     const shoulder = add(body, rot(v(bw * 0.34, -bh * 0.25), tilt));
     const head = add(shoulder, v(this.headX.v, this.headY.v));
+    this.headModel = head;
     // Neck control: rises out of the shoulder, so a flopped head bends it into a curve.
-    const neckCtrl = add(shoulder, rot(v(6, -30), tilt * 0.5));
-    const neckPts = quad(shoulder, neckCtrl, head, 14);
+    const neckCtrl = add(shoulder, rot(v(10 + 10 * sf, -30 + 8 * sf), tilt * 0.5));
+    const neckPts = quad(shoulder, neckCtrl, head, 16);
     const tangent = sub(head, neckCtrl);
-    // Beak follows the head's tilt but never points straight up or down.
-    const beakA = Math.max(-1.0, Math.min(0.6, Math.atan2(tangent.y, tangent.x) + Math.PI / 2));
+    // Beak follows the head's tilt; in panic the head turns right round to look back.
+    const fwd = Math.max(-1.0, Math.min(0.6, Math.atan2(tangent.y, tangent.x) + Math.PI / 2));
+    const back = -Math.PI - 0.15;
+    const beakA = fwd + (back - fwd) * panic;
 
     const drawLeg = (L) => {
       tube(g, quad(L.hip, L.ctrl, L.foot, 10), 7, colors.leg);
-      // Big clown-shoe feet.
-      ellipse(g, add(L.foot, v(8, -3)), 28, 11, s.air ? 0.4 : Math.sin(L.p) * 0.3, colors.leg);
+      flipper(g, L.foot, s.air ? 0.5 : Math.sin(L.p) * 0.35, 1.05, colors.leg);
     };
     const drawWing = (W) => {
-      tube(g, W.pts, 9, colors.wing);
-      glove(g, W.tip, W.a, 1);
+      tube(g, W.pts, 10, colors.wing);
+      featherFan(g, W.tip, W.a, 1, colors.wing);
     };
 
     // Back leg + wing, neck, body, tail, head, front leg + wing.
     drawLeg(legs[1]);
     drawWing(wings[1]);
-    tube(g, neckPts, 13, colors.body);
+    tube(g, neckPts, 14, colors.body);
     const tail = add(body, rot(v(-bw * 0.48, -bh * 0.2), tilt));
     g.fillStyle(0x1d2b1f, 1);
-    g.fillTriangle(tail.x - 18, tail.y - 9 - 3, tail.x + 4, tail.y - 5, tail.x + 4, tail.y + 9);
+    g.fillTriangle(tail.x - 18, tail.y - 12, tail.x + 4, tail.y - 5, tail.x + 4, tail.y + 9);
     g.fillStyle(colors.body, 1);
     g.fillTriangle(tail.x - 14, tail.y - 8, tail.x + 4, tail.y - 2, tail.x + 4, tail.y + 6);
     ellipse(g, body, bw, bh, tilt, colors.body);
-    const HR = 16;
+
+    const HR = 16 + panic * 2;
     circle(g, head, HR, colors.body);
-    const open = sf > 0.85 ? 0.55 + Math.sin(t * 28) * 0.25 : 0.06 + sf * 0.15;
+    const open = Math.max(panic * (0.75 + Math.sin(t * 30) * 0.2), sf > 0.85 ? 0.55 : 0.06 + sf * 0.15);
     beak(g, head, HR, beakA, open, colors.beak);
-    // Two tall pie-cut eyes, the far one peeking past the near one.
+    // Two tall pie-cut eyes, the far one peeking past the near one; huge in panic.
     const mode = this.dazed > 0 ? 'dazed' : 'normal';
+    const ew = 10 + panic * 3, eh = 15 + panic * 4;
     const eyeFar = add(head, rot(v(9, -7), beakA));
     const eyeNear = add(head, rot(v(0, -6), beakA));
-    pieEye(g, eyeFar, 9, 14, beakA, mode, t + 0.3);
-    pieEye(g, eyeNear, 10, 15, beakA, mode, t);
-    if (sf > 0.55 && this.dazed === 0) {
-      // Determined brows.
+    pieEye(g, eyeFar, ew - 1, eh - 1, beakA, mode, t + 0.3);
+    pieEye(g, eyeNear, ew, eh, beakA, mode, t);
+    if (this.dazed === 0 && (panic > 0.3 || sf > 0.55)) {
       g.lineStyle(3, 0x1d2b1f, 1);
       for (const e of [eyeNear, eyeFar]) {
-        const b0 = add(e, rot(v(-6, -11), beakA)), b1 = add(e, rot(v(5, -7), beakA));
+        // Determined brows slope down to the beak; worried brows slope up.
+        const worried = panic > 0.3;
+        const b0 = add(e, rot(v(-6, worried ? -13 : -11), beakA));
+        const b1 = add(e, rot(v(5, worried ? -16 : -7), beakA));
         g.lineBetween(b0.x, b0.y, b1.x, b1.y);
       }
     }
     drawLeg(legs[0]);
     drawWing(wings[0]);
+
+    for (const d of this.drops) drop(g, d.p, Math.atan2(d.vel.y, d.vel.x), 4);
 
     if (this.dazed > 0) {
       for (let i = 0; i < 3; i++) {

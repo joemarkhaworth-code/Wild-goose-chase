@@ -49,8 +49,11 @@ export const CONFIG = {
     drawScale: 1.3,        // goose + ragdoll drawn this much bigger (visual only, hitboxes unchanged)
     neckStiffness: 150,    // head spring (lower = floppier, more lag)
     neckDamping: 7,        // lower = more wobble/overshoot
-    neckFlop: 0.8,         // radians the neck flops back at top speed
-    neckStretch: 0.4,      // neck gets this much longer at top speed (rubber!)
+    neckFlop: 1.25,        // radians the neck flops back at top speed (~flat behind)
+    neckStretch: 1.3,      // neck gets this much longer at top speed (rubber!)
+    bodyStretch: 0.35,     // body stretches long and low at top speed
+    panicFrom: 0.55,       // speed fraction where the goose starts looking back in panic
+    panicFull: 0.85,
     neckInertia: 0.35,     // how much speeding up/slowing down throws the head
     dazedTime: 0.9,        // seconds of spinning eyes after getting up
     bpm: 112,              // idle bounce tempo (jazz!) - trees bounce to it too
@@ -87,14 +90,21 @@ export const CONFIG = {
 
   // 1930s cartoon look
   look: {
-    sky: 0xf2e3bd,         // creamy, faded
-    hills: 0xa9bf8e,
-    hillsFar: 0xc4cfa0,
-    treeLeaf: 0x6f9a55,
-    trunk: 0x7a5232,
-    grass: 0x8fae6b,
-    track: 0xc66e45,
-    trackDash: 0xdf9a6c,
+    sky: 0x9cc6da,         // faded blue (the sepia tone warms it)
+    cloud: 0xfbf3df,
+    hills: 0x8db56b,
+    hillsMid: 0x9fc27c,
+    hillsFar: 0xb4cf92,
+    treeLeaf: 0x7aa650,
+    treeLeafDark: 0x5f8a3e,
+    trunk: 0x8a5a35,
+    grass: 0x7fa95a,
+    track: 0xd6a466,       // dirt track
+    trackDash: 0xf1dcae,
+    barn: 0xb5462f,
+    wood: 0x9b6a3f,
+    faceTreeEvery: 3,      // every Nth tree has a grumpy face
+    signEvery: 70,         // metres between NO GEESE signs (roughly)
     boilFps: 12,           // line boil / film flicker rate (hand-drawn frames per second)
     boilAmp: 0.9,          // px of outline jitter
     film: true,            // old-film overlay

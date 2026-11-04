@@ -3,7 +3,7 @@
 // Purely presentation: the rules (runner.js) decide where the goose ends up;
 // the ragdoll is steered toward that so getting up doesn't teleport.
 
-import { add, rot, smooth, tube, ellipse, circle, beak, pieEye, glove } from './draw.js';
+import { add, rot, smooth, tube, ellipse, circle, beak, pieEye, flipper, featherFan } from './draw.js';
 
 const GROUP = -1; // negative group: ragdoll parts never collide with each other
 const v = (x, y) => ({ x, y });
@@ -99,12 +99,12 @@ export function spawnRagdoll(scene, x, feetY, colors, launch, cfg, onImpact, dra
       const drawLeg = (i) => {
         const pts = smooth([wp(torso, i ? 6 : -6, 14), legs[i].position, wp(legs[i], 0, 19)], 3);
         tube(g, pts, 7, colors.leg);
-        ellipse(g, feet[i].position, 28, 11, feet[i].angle, colors.leg);
+        flipper(g, wp(legs[i], 0, 19), feet[i].angle, 1.05, colors.leg);
       };
       const drawWing = (i) => {
         const tip = wp(wings[i], -15, 0);
         tube(g, smooth([wp(torso, i ? 2 : -2, -8), wings[i].position, tip], 3), 9, colors.wing);
-        glove(g, tip, wings[i].angle + Math.PI, 1);
+        featherFan(g, tip, wings[i].angle + Math.PI, 1, colors.wing);
       };
 
       drawLeg(1);

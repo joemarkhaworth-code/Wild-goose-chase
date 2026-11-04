@@ -185,3 +185,57 @@ export function glove(g, c, a, size = 1) {
   // Cuff.
   ellipse(g, add(c, rot(v(-r * 1.05, 0), a)), r * 0.7, r * 1.7, a, 0xffffff);
 }
+
+function outlinedPoly(g, pts, color) {
+  g.fillStyle(color, 1);
+  g.fillPoints(pts, true);
+  g.lineStyle(OW, OUTLINE, 1);
+  g.strokePoints(pts, true, true);
+}
+
+// Big webbed flipper foot at ankle c, pointing along angle a.
+export function flipper(g, c, a, size, color) {
+  const k = size;
+  const local = [
+    v(-4, -4), v(16, -7), v(26, -4), v(23, 0), v(30, 3), v(25, 6), v(29, 10), v(14, 9), v(-4, 5),
+  ];
+  outlinedPoly(g, local.map((p, i) => boil(add(c, rot(mul(p, k), a)), i + 7)), color);
+  // Webbing lines.
+  g.lineStyle(1.5, OUTLINE, 0.8);
+  for (const tip of [v(24, -3), v(26, 4)]) {
+    const p0 = add(c, rot(mul(v(4, 0), k), a)), p1 = add(c, rot(mul(tip, k), a));
+    g.lineBetween(p0.x, p0.y, p1.x, p1.y);
+  }
+}
+
+// Fan of feathers at a wing tip, splayed around angle a.
+export function featherFan(g, c, a, size, color) {
+  for (let i = 0; i < 4; i++) {
+    const fa = a + (i - 1.5) * 0.32;
+    const len = (18 + (i === 1 || i === 2 ? 5 : 0)) * size;
+    ellipse(g, add(c, rot(v(len * 0.45, 0), fa)), len, 8 * size, fa, color);
+  }
+}
+
+// Little blue sweat/panic drop.
+export function drop(g, c, a, r) {
+  const tail = add(c, rot(v(-r * 2.2, 0), a));
+  const side = rot(v(0, r), a);
+  const pts = [tail, add(c, side), add(c, rot(v(r, 0), a)), sub(c, side)];
+  g.fillStyle(OUTLINE, 1);
+  g.fillCircle(c.x, c.y, r + 1.5);
+  g.fillStyle(0x8ec9e8, 1);
+  g.fillPoints(pts, true);
+  g.fillCircle(c.x, c.y, r);
+  g.lineStyle(1.5, OUTLINE, 1);
+  g.lineBetween(tail.x, tail.y, add(c, side).x, add(c, side).y);
+  g.lineBetween(tail.x, tail.y, sub(c, side).x, sub(c, side).y);
+}
+
+// Outlined puffy cloud made of overlapping blobs (dust clouds, sky clouds).
+export function puff(g, c, r, color, blobs = [[-0.6, 0.1, 0.65], [0.6, 0.1, 0.65], [0, -0.25, 0.85]]) {
+  g.fillStyle(OUTLINE, 1);
+  for (const [dx, dy, rr] of blobs) g.fillCircle(c.x + dx * r, c.y + dy * r, rr * r + OW);
+  g.fillStyle(color, 1);
+  for (const [dx, dy, rr] of blobs) g.fillCircle(c.x + dx * r, c.y + dy * r, rr * r);
+}
