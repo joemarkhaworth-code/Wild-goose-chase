@@ -71,3 +71,4 @@ Later (not now)
 
 ## Decisions
 (Record decisions from playtesting here.)
+- Run buttons sit close together in the bottom-right, staggered like X and O on a PlayStation pad (LEFT lower-left, RIGHT upper-right). Mashing two nearby buttons is funnier and truer to Track & Field than one button per thumb.

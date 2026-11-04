@@ -24,9 +24,15 @@ export function createTouchAndKeyControls(scene, cfg, onAction) {
     return { bg, text, press };
   };
 
-  const y = height - size / 2 - pad;
-  const left = makeButton(size / 2 + pad, y, 'LEFT', 'tapLeft');
-  const right = makeButton(width - size / 2 - pad, y, 'RIGHT', 'tapRight');
+  // Run buttons sit close together bottom-right, staggered like X and O on a
+  // PlayStation pad, so you mash them with one or two fingers (Track & Field style).
+  const gap = cfg.buttonGap;
+  const rightX = width - size / 2 - pad;
+  const rightY = height - size / 2 - pad - cfg.buttonStagger;
+  const leftX = rightX - size - gap;
+  const leftY = height - size / 2 - pad;
+  const left = makeButton(leftX, leftY, 'LEFT', 'tapLeft');
+  const right = makeButton(rightX, rightY, 'RIGHT', 'tapRight');
 
   // Keyboard for desktop testing: ←/A and →/D.
   const kb = scene.input.keyboard;

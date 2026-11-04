@@ -31,5 +31,7 @@ export const CONFIG = {
   },
 
   // Controls
-  buttonSize: 150,
+  buttonSize: 130,
+  buttonGap: 12,        // px between the two run buttons
+  buttonStagger: 40,    // RIGHT sits this much higher than LEFT (X/O layout)
 };
