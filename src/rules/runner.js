@@ -12,9 +12,10 @@ export function createRunner(runConfig) {
   };
 }
 
+// Returns what happened: 'step' | 'stumble' | null (ignored).
 export function applyAction(r, action) {
-  if (action !== 'tapLeft' && action !== 'tapRight') return; // jump arrives in step 2
-  if (r.stumble > 0) return;
+  if (action !== 'tapLeft' && action !== 'tapRight') return null; // jump arrives in step 2
+  if (r.stumble > 0) return null;
 
   const side = action === 'tapLeft' ? 'L' : 'R';
   if (side === r.lastSide) {
@@ -22,11 +23,12 @@ export function applyAction(r, action) {
     r.speed *= r.cfg.stumbleSpeedFactor;
     r.stumble = r.cfg.stumbleTime;
     r.lastSide = null; // either foot can restart the rhythm
-    return;
+    return 'stumble';
   }
   r.lastSide = side;
   r.taps += 1;
   r.speed = Math.min(r.cfg.maxSpeed, r.speed + r.cfg.speedPerTap);
+  return 'step';
 }
 
 export function updateRunner(r, dt) {

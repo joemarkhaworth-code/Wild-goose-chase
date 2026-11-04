@@ -17,8 +17,12 @@ export function createTouchAndKeyControls(scene, cfg, onAction) {
     }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
     const press = () => {
       onAction(action);
-      bg.setFillStyle(0xffffff, 0.45);
-      scene.time.delayedCall(80, () => bg.setFillStyle(0xffffff, 0.18));
+      bg.setFillStyle(0xffffff, 0.5);
+      bg.setScale(0.88); text.setScale(0.88);
+      scene.time.delayedCall(70, () => {
+        bg.setFillStyle(0xffffff, 0.18);
+        bg.setScale(1); text.setScale(1);
+      });
     };
     bg.on('pointerdown', press);
     return { bg, text, press };

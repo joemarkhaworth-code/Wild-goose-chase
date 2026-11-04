@@ -5,6 +5,7 @@ import { createTouchAndKeyControls } from '../input/controls.js';
 
 const PPM = CONFIG.pixelsPerMetre;
 const START_X = 200; // world x (px) of the start line
+const FONT = 'system-ui, sans-serif';
 
 export class RaceScene extends Phaser.Scene {
   constructor() { super('Race'); }
@@ -15,46 +16,41 @@ export class RaceScene extends Phaser.Scene {
   }
 
   create() {
-    const { width, height } = this.scale;
+    const { height } = this.scale;
     this.worldWidth = START_X + (CONFIG.trackLength + 50) * PPM;
 
     this.cameras.main.setBackgroundColor('#8fd3ff');
     this.buildScenery();
     this.goose = this.buildGoose();
+    this.dust = [];
+    this.lurch = 0;
+    this.camLead = CONFIG.goose.screenX;
 
     this.runner = createRunner(CONFIG.run);
     this.actions = [];
     createTouchAndKeyControls(this, CONFIG, (a) => this.actions.push(a));
 
-    // HUD: distance + speed bar
-    this.hudText = this.add.text(width / 2, 16, '0 m', {
-      fontFamily: 'system-ui, sans-serif', fontSize: '30px', fontStyle: 'bold',
-      color: '#ffffff', stroke: '#1d2b1f', strokeThickness: 6,
-    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
-    this.speedBarBg = this.add.rectangle(width / 2, 60, 240, 14, 0x000000, 0.35)
-      .setScrollFactor(0).setDepth(100);
-    this.speedBar = this.add.rectangle(width / 2 - 120, 60, 0, 14, 0xffd23f)
-      .setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
-
+    this.buildHud();
+    this.buildSpeedLines();
     this.buildDebugOverlay();
     this.cameras.main.setBounds(0, 0, this.worldWidth, height);
   }
 
   // ---------- scenery (greybox) ----------
   buildScenery() {
-    const { height } = this.scale;
+    const { width, height } = this.scale;
     const g = CONFIG.groundY;
 
-    // Far hills (parallax)
-    const hills = this.add.graphics().setScrollFactor(0.3).setDepth(-20);
+    // Far hills (slow parallax)
+    const hills = this.add.graphics().setScrollFactor(0.2).setDepth(-20);
     hills.fillStyle(0x7cc47f, 1);
-    for (let x = -200; x < this.worldWidth * 0.3 + 1200; x += this.rng.range(160, 320)) {
+    for (let x = -200; x < this.worldWidth * 0.2 + width + 400; x += this.rng.range(160, 320)) {
       hills.fillCircle(x, g + 40, this.rng.range(120, 220));
     }
 
     // Trees (mid parallax)
     const trees = this.add.graphics().setScrollFactor(0.6).setDepth(-10);
-    for (let x = 0; x < this.worldWidth * 0.6 + 1200; x += this.rng.range(120, 380)) {
+    for (let x = 0; x < this.worldWidth * 0.6 + width + 400; x += this.rng.range(120, 380)) {
       const h = this.rng.range(60, 120);
       trees.fillStyle(0x6b4a2b, 1).fillRect(x - 6, g - h, 12, h);
       trees.fillStyle(0x3f8f45, 1).fillCircle(x, g - h, this.rng.range(30, 50));
@@ -63,8 +59,14 @@ export class RaceScene extends Phaser.Scene {
     // Grass + track
     this.add.rectangle(0, g, this.worldWidth, height - g, 0x5aa65e).setOrigin(0, 0).setDepth(-5);
     this.add.rectangle(0, g, this.worldWidth, 60, 0xc8643c).setOrigin(0, 0).setDepth(-4);
-    this.add.rectangle(0, g, this.worldWidth, 3, 0xffffff).setOrigin(0, 0).setDepth(-3);
-    this.add.rectangle(0, g + 57, this.worldWidth, 3, 0xffffff).setOrigin(0, 0).setDepth(-3);
+    const lines = this.add.graphics().setDepth(-3);
+    lines.fillStyle(0xffffff, 1);
+    lines.fillRect(0, g, this.worldWidth, 3);
+    lines.fillRect(0, g + 57, this.worldWidth, 3);
+
+    // Dashes on the track every 2 m: strong motion cue at speed.
+    lines.fillStyle(0xe58a5e, 1);
+    for (let x = 0; x < this.worldWidth; x += 2 * PPM) lines.fillRect(x, g + 26, 30, 6);
 
     // Start line
     this.add.rectangle(START_X, g, 6, 60, 0xffffff).setOrigin(0.5, 0).setDepth(-3);
@@ -72,10 +74,19 @@ export class RaceScene extends Phaser.Scene {
     // Distance markers
     for (let m = CONFIG.markerEvery; m <= CONFIG.trackLength; m += CONFIG.markerEvery) {
       const x = START_X + m * PPM;
-      this.add.rectangle(x, g, 2, 60, 0xffffff, 0.5).setOrigin(0.5, 0).setDepth(-3);
+      this.add.rectangle(x, g, 3, 60, 0xffffff, 0.7).setOrigin(0.5, 0).setDepth(-3);
       this.add.text(x, g + 66, `${m}m`, {
-        fontFamily: 'system-ui, sans-serif', fontSize: '16px', color: '#ffffff',
+        fontFamily: FONT, fontSize: '16px', color: '#ffffff',
       }).setOrigin(0.5, 0).setDepth(-3);
+    }
+
+    // Foreground grass tufts: scroll faster than the track, so speed reads hard.
+    const fg = this.add.graphics().setScrollFactor(1.6).setDepth(20);
+    fg.fillStyle(0x3d7d40, 1);
+    for (let x = 0; x < this.worldWidth * 1.6 + width + 400; x += this.rng.range(60, 200)) {
+      const y = this.rng.range(height - 30, height + 10);
+      const w = this.rng.range(14, 30);
+      fg.fillTriangle(x, y, x + w / 2, y - this.rng.range(20, 40), x + w, y);
     }
   }
 
@@ -84,8 +95,8 @@ export class RaceScene extends Phaser.Scene {
     const c = CONFIG.goose;
     const goose = this.add.container(START_X, CONFIG.groundY + 30).setDepth(10);
 
-    const legBack = this.add.rectangle(-4, -38, 6, 38, c.legColor).setOrigin(0.5, 0);
-    const legFront = this.add.rectangle(4, -38, 6, 38, c.legColor).setOrigin(0.5, 0);
+    const legBack = this.add.rectangle(-4, -38, 6, 40, c.legColor).setOrigin(0.5, 0);
+    const legFront = this.add.rectangle(4, -38, 6, 40, c.legColor).setOrigin(0.5, 0);
     const body = this.add.ellipse(0, -52, 64, 40, c.bodyColor);
     const tail = this.add.triangle(-34, -58, 0, 8, 14, 0, 14, 16, c.bodyColor);
     const neck = this.add.rectangle(22, -82, 12, 44, c.bodyColor).setAngle(15);
@@ -100,19 +111,116 @@ export class RaceScene extends Phaser.Scene {
 
   animateGoose(r) {
     const { legBack, legFront, body, neck, head } = this.goose.parts;
-    const phase = r.distance * 2.2;
-    const swing = Math.min(1, r.speed / 3) * 40;
+    const speedFrac = r.speed / CONFIG.run.maxSpeed;
+    const phase = r.distance * CONFIG.goose.legCycle;
+    const swing = Math.min(1, r.speed / 2) * (35 + 25 * speedFrac);
     legFront.setAngle(Math.sin(phase) * swing);
     legBack.setAngle(-Math.sin(phase) * swing);
-    const bob = Math.abs(Math.sin(phase)) * Math.min(1, r.speed / 4) * 5;
+    const bob = Math.abs(Math.sin(phase)) * Math.min(1, r.speed / 3) * 7;
     this.goose.y = CONFIG.groundY + 30 - bob;
 
-    // Lean forward with speed; flash and wobble on stumble.
-    const lean = (r.speed / CONFIG.run.maxSpeed) * 14;
-    const wobble = r.stumble > 0 ? Math.sin(this.time.now / 30) * 10 : 0;
+    // Lean hard into it with speed; wobble on stumble.
+    const lean = speedFrac * 22;
+    const wobble = r.stumble > 0 ? Math.sin(this.time.now / 30) * 14 : 0;
     this.goose.setAngle(lean + wobble);
     const col = r.stumble > 0 ? CONFIG.goose.stumbleColor : CONFIG.goose.bodyColor;
     body.setFillStyle(col); neck.setFillStyle(col); head.setFillStyle(col);
+  }
+
+  // ---------- per-tap feedback ----------
+  onStep() {
+    this.lurch = CONFIG.feel.tapLurch;
+    this.goose.setScale(1.06, 0.94);
+    this.time.delayedCall(60, () => this.goose.setScale(1));
+    this.spawnDust(this.goose.x - 6, CONFIG.groundY + 30);
+  }
+
+  onStumble() {
+    this.cameras.main.shake(180, CONFIG.feel.stumbleShake);
+    for (let i = 0; i < 4; i++) this.spawnDust(this.goose.x + this.rng.range(-20, 20), CONFIG.groundY + 30);
+  }
+
+  spawnDust(x, y) {
+    const puff = this.add.circle(x, y, this.rng.range(5, 9), 0xe9d3b0, 0.9).setDepth(9);
+    this.tweens.add({
+      targets: puff,
+      x: x - this.rng.range(20, 45),
+      y: y - this.rng.range(8, 22),
+      scale: 2.2,
+      alpha: 0,
+      duration: 380,
+      onComplete: () => puff.destroy(),
+    });
+  }
+
+  // ---------- HUD ----------
+  buildHud() {
+    const { width } = this.scale;
+    this.hudText = this.add.text(width / 2, 10, '0 m', {
+      fontFamily: FONT, fontSize: '34px', fontStyle: 'bold',
+      color: '#ffffff', stroke: '#1d2b1f', strokeThickness: 7,
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
+
+    // Segmented power meter, Track & Field style.
+    const n = CONFIG.feel.meterSegments;
+    const segW = 20, segH = 22, gap = 4;
+    const total = n * segW + (n - 1) * gap;
+    const x0 = width / 2 - total / 2;
+    this.add.rectangle(width / 2, 70, total + 12, segH + 12, 0x1d2b1f, 0.75)
+      .setScrollFactor(0).setDepth(100);
+    this.meter = [];
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      const color = t < 0.5 ? 0x4cd964 : t < 0.8 ? 0xffd23f : 0xff4b3e;
+      const seg = this.add.rectangle(x0 + i * (segW + gap) + segW / 2, 70, segW, segH, color)
+        .setScrollFactor(0).setDepth(101);
+      seg.onColor = color;
+      this.meter.push(seg);
+    }
+    this.maxText = this.add.text(width / 2 + total / 2 + 14, 70, 'MAX!', {
+      fontFamily: FONT, fontSize: '26px', fontStyle: 'bold',
+      color: '#ff4b3e', stroke: '#ffffff', strokeThickness: 5,
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101).setVisible(false);
+  }
+
+  updateHud(r) {
+    this.hudText.setText(`${Math.floor(r.distance)} m`);
+    const frac = r.speed / CONFIG.run.maxSpeed;
+    const lit = Math.round(frac * this.meter.length);
+    this.meter.forEach((seg, i) => {
+      if (i < lit) seg.setFillStyle(seg.onColor, 1);
+      else seg.setFillStyle(0x555555, 0.6);
+    });
+    const atMax = frac > 0.95;
+    this.maxText.setVisible(atMax && Math.floor(this.time.now / 120) % 2 === 0);
+  }
+
+  // ---------- speed lines ----------
+  buildSpeedLines() {
+    const { width } = this.scale;
+    this.speedLines = [];
+    for (let i = 0; i < 14; i++) {
+      const line = this.add.rectangle(
+        this.rng.range(0, width), this.rng.range(110, CONFIG.groundY - 10),
+        this.rng.range(60, 160), 3, 0xffffff, 0,
+      ).setScrollFactor(0).setDepth(15);
+      this.speedLines.push(line);
+    }
+  }
+
+  updateSpeedLines(r, dt) {
+    const { width } = this.scale;
+    const frac = r.speed / CONFIG.run.maxSpeed;
+    const from = CONFIG.feel.speedLinesFrom;
+    const alpha = frac < from ? 0 : ((frac - from) / (1 - from)) * 0.7;
+    for (const line of this.speedLines) {
+      line.x -= r.speed * PPM * 2.2 * dt;
+      if (line.x < -line.width) {
+        line.x = width + this.rng.range(0, 200);
+        line.y = this.rng.range(110, CONFIG.groundY - 10);
+      }
+      line.setFillStyle(0xffffff, alpha);
+    }
   }
 
   // ---------- debug ----------
@@ -150,16 +258,30 @@ export class RaceScene extends Phaser.Scene {
     const dt = Math.min(deltaMs / 1000, 0.05);
     const r = this.runner;
 
-    for (const a of this.actions) applyAction(r, a);
+    for (const a of this.actions) {
+      const result = applyAction(r, a);
+      if (result === 'step') this.onStep();
+      else if (result === 'stumble') this.onStumble();
+    }
     this.actions.length = 0;
     updateRunner(r, dt);
 
-    this.goose.x = START_X + r.distance * PPM;
+    // Lurch decays back to zero quickly after each tap.
+    this.lurch = Math.max(0, this.lurch - 60 * dt);
+    this.goose.x = START_X + r.distance * PPM + this.lurch;
     this.animateGoose(r);
-    this.cameras.main.scrollX = this.goose.x - this.scale.width * CONFIG.goose.screenX;
 
-    this.hudText.setText(`${Math.floor(r.distance)} m`);
-    this.speedBar.width = 240 * (r.speed / CONFIG.run.maxSpeed);
+    // Camera leads further ahead the faster you go.
+    const frac = r.speed / CONFIG.run.maxSpeed;
+    const g = CONFIG.goose;
+    const targetLead = g.screenX + (g.screenXFast - g.screenX) * frac;
+    this.camLead += (targetLead - this.camLead) * Math.min(1, 3 * dt);
+    const cam = this.cameras.main;
+    cam.scrollX = START_X + r.distance * PPM - this.scale.width * this.camLead;
+    if (frac > 0.9 && !cam.shakeEffect.isRunning) cam.shake(100, CONFIG.feel.maxSpeedShake);
+
+    this.updateSpeedLines(r, dt);
+    this.updateHud(r);
     this.updateDebug(r);
   }
 }
