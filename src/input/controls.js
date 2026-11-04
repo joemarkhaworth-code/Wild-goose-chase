@@ -7,8 +7,8 @@ export function createTouchAndKeyControls(scene, cfg, onAction) {
   const pad = 20;
   scene.input.addPointer(3); // multitouch
 
-  const makeButton = (x, y, label, action) => {
-    const bg = scene.add.circle(x, y, size / 2, 0xffffff, 0.18)
+  const makeButton = (x, y, label, action, d = size) => {
+    const bg = scene.add.circle(x, y, d / 2, 0xffffff, 0.18)
       .setStrokeStyle(4, 0xffffff, 0.6)
       .setScrollFactor(0).setDepth(100)
       .setInteractive();
@@ -38,15 +38,20 @@ export function createTouchAndKeyControls(scene, cfg, onAction) {
   const left = makeButton(leftX, leftY, 'LEFT', 'tapLeft');
   const right = makeButton(rightX, rightY, 'RIGHT', 'tapRight');
 
-  // Keyboard for desktop testing: ←/A and →/D.
+  // JUMP bottom-left, for the other thumb.
+  const js = cfg.jumpButtonSize;
+  const jump = makeButton(js / 2 + pad, height - js / 2 - pad, 'JUMP', 'jump', js);
+
+  // Keyboard for desktop testing: ←/A and →/D run, Space/↑/W jump.
   const kb = scene.input.keyboard;
   if (kb) {
     kb.on('keydown', (e) => {
       if (e.repeat) return;
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') left.press();
       if (e.code === 'ArrowRight' || e.code === 'KeyD') right.press();
+      if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') jump.press();
     });
   }
 
-  return { left, right };
+  return { left, right, jump };
 }

@@ -1,11 +1,13 @@
 import { CONFIG } from '../config.js';
 import { makeRng } from '../rng.js';
-import { createRunner, applyAction, updateRunner } from '../rules/runner.js';
+import { createRunner, applyAction, updateRunner, crashRunner, isAirborne } from '../rules/runner.js';
+import { generateHurdles, findCollision } from '../rules/track.js';
 import { createTouchAndKeyControls } from '../input/controls.js';
 
 const PPM = CONFIG.pixelsPerMetre;
 const START_X = 200; // world x (px) of the start line
 const FONT = 'system-ui, sans-serif';
+const HPX = PPM * CONFIG.verticalScale; // pixels per metre for heights (jumps, hurdles)
 
 export class RaceScene extends Phaser.Scene {
   constructor() { super('Race'); }
@@ -21,7 +23,10 @@ export class RaceScene extends Phaser.Scene {
 
     this.cameras.main.setBackgroundColor('#8fd3ff');
     this.buildScenery();
+    this.hurdles = generateHurdles(this.rng, CONFIG.track, CONFIG.trackLength);
+    this.buildHurdles();
     this.goose = this.buildGoose();
+    this.crashAnim = 0;
     this.dust = [];
     this.lurch = 0;
     this.camLead = CONFIG.goose.screenX;
@@ -90,6 +95,27 @@ export class RaceScene extends Phaser.Scene {
     }
   }
 
+  // ---------- hurdles (greybox blocks) ----------
+  buildHurdles() {
+    const g = CONFIG.groundY + 30; // middle of the track, where the goose runs
+    for (const h of this.hurdles) {
+      const hPx = h.height * HPX;
+      const x = START_X + h.at * PPM;
+      const c = this.add.container(x, g).setDepth(8);
+      c.add([
+        this.add.rectangle(0, 0, 8, hPx, 0xffffff).setStrokeStyle(2, 0x1d2b1f).setOrigin(0.5, 1),
+        this.add.rectangle(0, -hPx, 16, 22, 0xff4b3e).setStrokeStyle(2, 0x1d2b1f).setOrigin(0.5, 0),
+        this.add.rectangle(0, -hPx + 7, 16, 6, 0xffffff).setOrigin(0.5, 0),
+        this.add.rectangle(0, 0, 30, 6, 0x555555).setOrigin(0.5, 1),
+      ]);
+      h.view = c;
+    }
+  }
+
+  knockOver(h) {
+    this.tweens.add({ targets: h.view, angle: 85, duration: 220, ease: 'Quad.easeIn' });
+  }
+
   // ---------- goose (greybox shapes) ----------
   buildGoose() {
     const c = CONFIG.goose;
@@ -113,16 +139,28 @@ export class RaceScene extends Phaser.Scene {
     const { legBack, legFront, body, neck, head } = this.goose.parts;
     const speedFrac = r.speed / CONFIG.run.maxSpeed;
     const phase = r.distance * CONFIG.goose.legCycle;
-    const swing = Math.min(1, r.speed / 2) * (35 + 25 * speedFrac);
-    legFront.setAngle(Math.sin(phase) * swing);
-    legBack.setAngle(-Math.sin(phase) * swing);
-    const bob = Math.abs(Math.sin(phase)) * Math.min(1, r.speed / 3) * 7;
-    this.goose.y = CONFIG.groundY + 30 - bob;
+    const air = isAirborne(r);
+    if (air) {
+      // Legs tucked, hurdler style.
+      legFront.setAngle(-70);
+      legBack.setAngle(40);
+    } else {
+      const swing = Math.min(1, r.speed / 2) * (35 + 25 * speedFrac);
+      legFront.setAngle(Math.sin(phase) * swing);
+      legBack.setAngle(-Math.sin(phase) * swing);
+    }
+    const bob = air ? 0 : Math.abs(Math.sin(phase)) * Math.min(1, r.speed / 3) * 7;
+    this.goose.y = CONFIG.groundY + 30 - bob - r.height * HPX;
 
-    // Lean hard into it with speed; wobble on stumble.
+    // Lean hard into it with speed; wobble on stumble; sprawl on a crash.
     const lean = speedFrac * 22;
     const wobble = r.stumble > 0 ? Math.sin(this.time.now / 30) * 14 : 0;
-    this.goose.setAngle(lean + wobble);
+    let angle = lean + wobble;
+    if (this.crashAnim > 0) {
+      const t = this.crashAnim / CONFIG.run.crashTime; // 1 -> 0
+      angle = 75 * Math.sin(Math.min(1, t * 1.4) * Math.PI / 2) + wobble * 0.3;
+    }
+    this.goose.setAngle(angle);
     const col = r.stumble > 0 ? CONFIG.goose.stumbleColor : CONFIG.goose.bodyColor;
     body.setFillStyle(col); neck.setFillStyle(col); head.setFillStyle(col);
   }
@@ -133,6 +171,32 @@ export class RaceScene extends Phaser.Scene {
     this.goose.setScale(1.06, 0.94);
     this.time.delayedCall(60, () => this.goose.setScale(1));
     this.spawnDust(this.goose.x - 6, CONFIG.groundY + 30);
+  }
+
+  onJump() {
+    this.goose.setScale(0.9, 1.12);
+    this.time.delayedCall(90, () => this.goose.setScale(1));
+    for (let i = 0; i < 2; i++) this.spawnDust(this.goose.x - 10, CONFIG.groundY + 30);
+  }
+
+  onLand() {
+    this.goose.setScale(1.12, 0.88);
+    this.time.delayedCall(80, () => this.goose.setScale(1));
+    for (let i = 0; i < 3; i++) this.spawnDust(this.goose.x + this.rng.range(-15, 15), CONFIG.groundY + 30);
+  }
+
+  onCrash(h) {
+    this.knockOver(h);
+    this.crashAnim = CONFIG.run.crashTime;
+    this.cameras.main.shake(250, CONFIG.feel.crashShake);
+    for (let i = 0; i < 7; i++) this.spawnDust(this.goose.x + this.rng.range(-25, 25), CONFIG.groundY + 30);
+    const bonk = this.add.text(this.goose.x, this.goose.y - 130, 'BONK!', {
+      fontFamily: FONT, fontSize: '30px', fontStyle: 'bold',
+      color: '#ff4b3e', stroke: '#ffffff', strokeThickness: 6,
+    }).setOrigin(0.5).setDepth(30);
+    this.tweens.add({
+      targets: bonk, y: bonk.y - 40, alpha: 0, duration: 700, onComplete: () => bonk.destroy(),
+    });
   }
 
   onStumble() {
@@ -247,7 +311,8 @@ export class RaceScene extends Phaser.Scene {
       `FPS        ${this.game.loop.actualFps.toFixed(0)}`,
       `Round      -`,
       `Timer      -`,
-      `Goose      ${r.distance.toFixed(1)} m  ${r.speed.toFixed(1)} m/s${r.stumble > 0 ? '  STUMBLE' : ''}`,
+      `Goose      ${r.distance.toFixed(1)} m  ${r.speed.toFixed(1)} m/s  h ${r.height.toFixed(2)}${r.stumble > 0 ? '  STUMBLE' : ''}`,
+      `Next hurdle ${(this.hurdles.find((h) => h.at > r.distance)?.at ?? 0).toFixed(1)} m`,
       `Gooseliath -`,
       `Seed       ${this.seed}`,
     ]);
@@ -262,9 +327,18 @@ export class RaceScene extends Phaser.Scene {
       const result = applyAction(r, a);
       if (result === 'step') this.onStep();
       else if (result === 'stumble') this.onStumble();
+      else if (result === 'jump') this.onJump();
     }
     this.actions.length = 0;
-    updateRunner(r, dt);
+    if (updateRunner(r, dt) === 'land') this.onLand();
+
+    const hit = findCollision(r, this.hurdles, CONFIG.track);
+    if (hit) {
+      hit.hit = true;
+      crashRunner(r);
+      this.onCrash(hit);
+    }
+    this.crashAnim = Math.max(0, this.crashAnim - dt);
 
     // Lurch decays back to zero quickly after each tap.
     this.lurch = Math.max(0, this.lurch - 60 * dt);
