@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Wild Goose Chase</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      background: #1d2b1f; overflow: hidden;
+      touch-action: none; user-select: none; -webkit-user-select: none;
+      -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+    }
+    #game { width: 100%; height: 100%; }
+    #rotate {
+      display: none; position: fixed; inset: 0; z-index: 10;
+      background: #1d2b1f; color: #f4f1e6;
+      font: bold 22px system-ui, sans-serif; text-align: center;
+      align-items: center; justify-content: center; padding: 24px;
+    }
+    @media (orientation: portrait) and (max-width: 900px) {
+      #rotate { display: flex; }
+    }
+  </style>
+</head>
+<body>
+  <div id="rotate">Turn your phone sideways to run 🪿</div>
+  <div id="game"></div>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
