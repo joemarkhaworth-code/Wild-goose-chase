@@ -22,6 +22,12 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Cache-bust JS so phones always get the latest code
+        run: |
+          V=${GITHUB_SHA::8}
+          sed -i -E "s#src=\"src/main\.js\"#src=\"src/main.js?v=$V\"#" index.html
+          find src -name '*.js' -exec sed -i -E "s#(from '\.[^']*\.js)'#\1?v=$V'#g" {} +
+          grep -rn "?v=" index.html src | head -5
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
