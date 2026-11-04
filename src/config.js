@@ -45,10 +45,17 @@ export const CONFIG = {
     screenX: 0.3,          // goose position on screen (fraction of width) when standing
     screenXFast: 0.18,     // ...and at top speed (camera looks ahead)
     legCycle: 3.2,         // leg swings per metre (higher = busier legs)
+    legLen: 38,            // px, hip to foot
+    neckStiffness: 150,    // head spring (lower = floppier, more lag)
+    neckDamping: 7,        // lower = more wobble/overshoot
+    neckFlop: 0.8,         // radians the neck flops back at top speed
+    neckStretch: 0.4,      // neck gets this much longer at top speed (rubber!)
+    neckInertia: 0.35,     // how much speeding up/slowing down throws the head
+    dazedTime: 0.9,        // seconds of spinning eyes after getting up
     bodyColor: 0xf4f1e6,
+    wingColor: 0xffffff,
     beakColor: 0xf2a33a,
     legColor: 0xf2a33a,
-    stumbleColor: 0xff8a80,
   },
 
   // Feel / feedback
@@ -59,6 +66,8 @@ export const CONFIG = {
     maxSpeedShake: 0.0015, // camera shake intensity at top speed
     stumbleShake: 0.008,
     crashShake: 0.02,
+    hitStop: 0.09,         // freeze-frame on a crash (seconds)
+    tripHitStop: 0.04,
     crashWords: ['BONK!', 'HONK!', 'OOF!', 'SPLAT!', 'THWACK!', 'KER-HONK!', 'NOT THE FACE!'],
     tripWords: ['WHOOPS!', 'OOPS!', 'HONK?', 'EEP!', 'FLAP!'],
   },

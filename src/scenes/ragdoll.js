@@ -1,11 +1,16 @@
-// Greybox goose ragdoll: Matter.js bodies joined by constraints.
+// Rubber-hose goose ragdoll: invisible Matter.js bodies joined by constraints,
+// drawn every frame as the same noodle goose (soft neck, bendy legs).
 // Purely presentation: the rules (runner.js) decide where the goose ends up;
 // the ragdoll is steered toward that so getting up doesn't teleport.
 
-const GROUP = -1; // negative group: ragdoll parts never collide with each other
+import { add, rot, smooth, tube, ellipse, circle, beak, eye } from './draw.js';
 
-export function spawnRagdoll(scene, x, feetY, colors, launch, cfg) {
+const GROUP = -1; // negative group: ragdoll parts never collide with each other
+const v = (x, y) => ({ x, y });
+
+export function spawnRagdoll(scene, x, feetY, colors, launch, cfg, onImpact) {
   const M = scene.matter;
+  const Body = Phaser.Physics.Matter.Matter.Body;
   const opts = (extra = {}) => ({
     collisionFilter: { group: GROUP },
     friction: cfg.friction,
@@ -13,89 +18,106 @@ export function spawnRagdoll(scene, x, feetY, colors, launch, cfg) {
     restitution: cfg.restitution,
     ...extra,
   });
-  const mk = (shape, extra) => M.add.gameObject(shape, opts(extra));
 
-  // Body
-  const torso = mk(scene.add.ellipse(x, feetY - 52, 64, 40, colors.body).setDepth(10),
-    { shape: { type: 'rectangle', width: 60, height: 36, chamfer: { radius: 16 } }, density: 0.002 });
-  const tail = scene.add.triangle(0, 0, 0, 8, 14, 0, 14, 16, colors.body).setDepth(10);
-
-  // Wobbly neck: three segments, so it whips and flops.
-  const neckSegs = [];
-  for (let i = 0; i < 3; i++) {
-    neckSegs.push(mk(scene.add.rectangle(x + 20 + i * 4, feetY - 70 - i * 14, 12, 16, colors.body).setDepth(10)));
-  }
-  const head = mk(scene.add.circle(x + 32, feetY - 112, 14, colors.body).setDepth(11),
-    { shape: { type: 'circle', radius: 14 } });
-  const beak = scene.add.triangle(0, 0, 0, -5, 18, 0, 0, 5, colors.beak).setDepth(11);
-  // Dazed X eye.
-  const eye = scene.add.text(0, 0, 'x', {
-    fontFamily: 'monospace', fontSize: '16px', fontStyle: 'bold', color: '#1d2b1f',
-  }).setOrigin(0.5).setDepth(12);
-
-  // Flailing wings.
-  const wingA = mk(scene.add.ellipse(x - 4, feetY - 60, 34, 12, 0xe4e0d2).setDepth(12),
-    { shape: { type: 'rectangle', width: 30, height: 10 }, density: 0.0006 });
-  const wingB = mk(scene.add.ellipse(x + 4, feetY - 60, 34, 12, 0xe4e0d2).setDepth(9),
-    { shape: { type: 'rectangle', width: 30, height: 10 }, density: 0.0006 });
-
-  // Legs with big flappy feet.
-  const legA = mk(scene.add.rectangle(x - 6, feetY - 19, 6, 38, colors.leg).setDepth(9));
-  const legB = mk(scene.add.rectangle(x + 6, feetY - 19, 6, 38, colors.leg).setDepth(9));
-  const footA = mk(scene.add.rectangle(x - 1, feetY, 16, 5, colors.leg).setDepth(9));
-  const footB = mk(scene.add.rectangle(x + 11, feetY, 16, 5, colors.leg).setDepth(9));
+  const torso = M.add.rectangle(x, feetY - 52, 60, 36, opts({ chamfer: { radius: 16 }, density: 0.002 }));
+  const neck = [0, 1, 2].map((i) => M.add.circle(x + 22 + i * 4, feetY - 72 - i * 13, 6, opts({ density: 0.0008 })));
+  const head = M.add.circle(x + 32, feetY - 112, 14, opts({ density: 0.001 }));
+  const wings = [0, 1].map(() => M.add.rectangle(x - 10, feetY - 60, 30, 10, opts({ density: 0.0005 })));
+  const legs = [-6, 6].map((dx) => M.add.rectangle(x + dx, feetY - 19, 6, 38, opts({ density: 0.0008 })));
+  const feet = [-1, 11].map((dx) => M.add.rectangle(x + dx, feetY, 18, 6, opts({ density: 0.0008 })));
 
   const s = cfg.stiffness;
-  const joint = (a, b, pa, pb, k = s) => M.add.constraint(a.body, b.body, 0, k, {
-    pointA: pa, pointB: pb, damping: 0.05,
-  });
+  const joint = (a, b, pa, pb, k = s) => M.add.constraint(a, b, 0, k, { pointA: pa, pointB: pb, damping: 0.05 });
   const joints = [
-    joint(torso, neckSegs[0], { x: 20, y: -12 }, { x: 0, y: 7 }),
-    joint(neckSegs[0], neckSegs[1], { x: 0, y: -7 }, { x: 0, y: 7 }, s * 0.7),
-    joint(neckSegs[1], neckSegs[2], { x: 0, y: -7 }, { x: 0, y: 7 }, s * 0.7),
-    joint(neckSegs[2], head, { x: 0, y: -7 }, { x: -6, y: 8 }, s * 0.7),
-    joint(torso, wingA, { x: -2, y: -8 }, { x: 13, y: 0 }, s * 0.6),
-    joint(torso, wingB, { x: 2, y: -8 }, { x: 13, y: 0 }, s * 0.6),
-    joint(torso, legA, { x: -6, y: 14 }, { x: 0, y: -17 }),
-    joint(torso, legB, { x: 6, y: 14 }, { x: 0, y: -17 }),
-    joint(legA, footA, { x: 0, y: 18 }, { x: -5, y: 0 }),
-    joint(legB, footB, { x: 0, y: 18 }, { x: -5, y: 0 }),
+    joint(torso, neck[0], { x: 20, y: -12 }, { x: 0, y: 5 }),
+    joint(neck[0], neck[1], { x: 0, y: -6 }, { x: 0, y: 6 }, s * 0.6),
+    joint(neck[1], neck[2], { x: 0, y: -6 }, { x: 0, y: 6 }, s * 0.6),
+    joint(neck[2], head, { x: 0, y: -6 }, { x: -6, y: 9 }, s * 0.6),
+    joint(torso, wings[0], { x: -2, y: -8 }, { x: 13, y: 0 }, s * 0.5),
+    joint(torso, wings[1], { x: 2, y: -8 }, { x: 13, y: 0 }, s * 0.5),
+    joint(torso, legs[0], { x: -6, y: 14 }, { x: 0, y: -17 }),
+    joint(torso, legs[1], { x: 6, y: 14 }, { x: 0, y: -17 }),
+    joint(legs[0], feet[0], { x: 0, y: 18 }, { x: -6, y: 0 }),
+    joint(legs[1], feet[1], { x: 0, y: 18 }, { x: -6, y: 0 }),
   ];
+  const bodies = [torso, ...neck, head, ...wings, ...legs, ...feet];
 
-  // Fling it: forward with the goose's momentum, up, and spinning. The head and
-  // wings get extra so the neck whips and the wings flap wildly.
-  const parts = [torso, ...neckSegs, head, wingA, wingB, legA, legB, footA, footB];
-  for (const p of parts) p.setVelocity(launch.vx, -launch.up);
-  torso.setAngularVelocity(launch.spin);
-  head.setVelocity(launch.vx * 1.5, -launch.up * 1.4);
-  wingA.setVelocity(launch.vx * 0.6, -launch.up * 1.8);
-  wingB.setVelocity(launch.vx * 1.3, -launch.up * 0.4);
-  footA.setVelocity(launch.vx * 1.4, -launch.up * 1.2);
+  // Fling it: forward with the goose's momentum, up, and spinning. Head, wings
+  // and a foot get extra so everything flails at different rates.
+  for (const b of bodies) Body.setVelocity(b, { x: launch.vx, y: -launch.up });
+  Body.setAngularVelocity(torso, launch.spin);
+  Body.setVelocity(head, { x: launch.vx * 1.6, y: -launch.up * 1.5 });
+  Body.setVelocity(wings[0], { x: launch.vx * 0.5, y: -launch.up * 2 });
+  Body.setVelocity(wings[1], { x: launch.vx * 1.4, y: -launch.up * 0.3 });
+  Body.setVelocity(feet[0], { x: launch.vx * 1.5, y: -launch.up * 1.3 });
+
+  const g = scene.add.graphics().setDepth(10);
+  const wp = (b, lx, ly) => add(b.position, rot(v(lx, ly), b.angle));
+  let prevVy = torso.velocity.y;
+  let impactCool = 0;
+  let squash = 0;
 
   return {
-    torso, head, parts, joints,
+    get head() { return head.position; },
+    get angle() { return torso.angle; },
+    get torso() { return torso.position; },
+
     // targetX: where the rules say the goose is (px); targetVx: rules speed (px per step).
-    update(targetX, targetVx) {
+    update(targetX, targetVx, dt) {
       // Steer the torso's horizontal velocity toward the rules' speed, plus a
       // little correction for drift. Everything else stays floppy physics.
-      const want = targetVx + (targetX - torso.x) * 0.05;
-      const vx = torso.body.velocity.x;
-      torso.setVelocityX(vx + (want - vx) * cfg.follow);
+      const want = targetVx + (targetX - torso.position.x) * 0.05;
+      const vx = torso.velocity.x;
+      Body.setVelocity(torso, { x: vx + (want - vx) * cfg.follow, y: torso.velocity.y });
 
-      // Cosmetic bits ride on their bodies.
-      const t = torso.rotation;
-      tail.setPosition(torso.x - Math.cos(t) * 34, torso.y - Math.sin(t) * 34).setRotation(t);
-      const a = head.rotation;
-      const cos = Math.cos(a), sin = Math.sin(a);
-      beak.setPosition(head.x + cos * 20, head.y + sin * 20).setRotation(a);
-      eye.setPosition(head.x + cos * 4 + sin * 5, head.y + sin * 4 - cos * 5).setRotation(a);
+      // Ground impacts: a big drop in downward speed means we just bounced.
+      impactCool = Math.max(0, impactCool - dt);
+      const vy = torso.velocity.y;
+      if (prevVy > 3 && vy < prevVy - 4 && impactCool === 0) {
+        const strength = Math.min(1, prevVy / 12);
+        squash = 0.25 + strength * 0.25;
+        impactCool = 0.15;
+        onImpact?.(torso.position.x, torso.position.y + 18, strength);
+      }
+      prevVy = vy;
+      squash = Math.max(0, squash - dt * 2.5);
     },
+
+    draw(t) {
+      g.clear();
+      const vel = torso.velocity;
+      const speed = Math.hypot(vel.x, vel.y);
+      const stretch = Math.min(0.3, speed * 0.02);
+
+      const drawLeg = (i) => {
+        const pts = smooth([wp(torso, i ? 6 : -6, 14), legs[i].position, wp(legs[i], 0, 19)], 3);
+        tube(g, pts, 7, colors.leg);
+        ellipse(g, feet[i].position, 20, 8, feet[i].angle, colors.leg);
+      };
+      const drawWing = (i) => {
+        const pts = smooth([wp(torso, i ? 2 : -2, -8), wings[i].position, wp(wings[i], -15, 0)], 3);
+        tube(g, pts, 11, colors.wing);
+      };
+
+      drawLeg(1);
+      drawWing(1);
+      tube(g, smooth([wp(torso, 20, -12), ...neck.map((n) => n.position), head.position], 3), 13, colors.body);
+      const tail = wp(torso, -34, -4);
+      g.fillStyle(0x1d2b1f, 1).fillCircle(tail.x, tail.y, 9);
+      g.fillStyle(colors.body, 1).fillCircle(tail.x, tail.y, 6);
+      ellipse(g, torso.position, 64 * (1 + stretch + squash), 40 * (1 - stretch * 0.6 - squash),
+        torso.angle, colors.body);
+      circle(g, head.position, 14, colors.body);
+      beak(g, head.position, 14, head.angle, 0.8, colors.beak); // screaming
+      eye(g, add(head.position, rot(v(2, -5), head.angle)), 6, 0, 'x', t);
+      drawLeg(0);
+      drawWing(0);
+    },
+
     destroy() {
       for (const j of joints) M.world.removeConstraint(j);
-      for (const p of parts) p.destroy();
-      beak.destroy();
-      tail.destroy();
-      eye.destroy();
+      for (const b of bodies) M.world.remove(b);
+      g.destroy();
     },
   };
 }
@@ -103,7 +125,8 @@ export function spawnRagdoll(scene, x, feetY, colors, launch, cfg) {
 // Feathers burst out and drift down, swaying.
 export function featherBurst(scene, rng, x, y, count) {
   for (let i = 0; i < count; i++) {
-    const f = scene.add.ellipse(x, y, 12, 5, 0xffffff).setDepth(25).setAngle(rng.range(0, 360));
+    const f = scene.add.ellipse(x, y, 13, 5, 0xffffff).setStrokeStyle(1.5, 0x1d2b1f)
+      .setDepth(25).setAngle(rng.range(0, 360));
     const dx = rng.range(-90, 140);
     const peak = y - rng.range(30, 110);
     scene.tweens.add({
@@ -125,7 +148,7 @@ export function featherBurst(scene, rng, x, y, count) {
 // A knocked hurdle becomes a physics object and cartwheels away.
 export function launchHurdle(scene, x, groundY, hPx, vx) {
   const bar = scene.add.rectangle(x, groundY - hPx / 2, 16, hPx, 0xff4b3e)
-    .setStrokeStyle(3, 0xffffff).setDepth(8);
+    .setStrokeStyle(3, 0x1d2b1f).setDepth(8);
   const obj = scene.matter.add.gameObject(bar, {
     restitution: 0.5, friction: 0.05, frictionAir: 0.005, density: 0.0015,
   });

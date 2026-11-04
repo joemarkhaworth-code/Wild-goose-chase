@@ -4,6 +4,8 @@ import { createRunner, applyAction, updateRunner, crashRunner, isAirborne, isDow
 import { generateHurdles, findCollision } from '../rules/track.js';
 import { createTouchAndKeyControls } from '../input/controls.js';
 import { spawnRagdoll, featherBurst, launchHurdle } from './ragdoll.js';
+import { GooseRig } from './gooseRig.js';
+import { star } from './draw.js';
 
 const PPM = CONFIG.pixelsPerMetre;
 const START_X = 200; // world x (px) of the start line
@@ -28,9 +30,13 @@ export class RaceScene extends Phaser.Scene {
     this.buildHurdles();
     // Separate RNG for cosmetic effects so they never shift gameplay randomness.
     this.fx = makeRng((this.seed ^ 0x9e3779b9) >>> 0);
-    this.goose = this.buildGoose();
+    const gc = CONFIG.goose;
+    this.colors = { body: gc.bodyColor, wing: gc.wingColor, beak: gc.beakColor, leg: gc.legColor };
+    this.rig = new GooseRig(this, this.colors, gc);
+    this.rig.x = START_X; this.rig.y = CONFIG.groundY + 30;
     this.ragdoll = null;
-    this.getUpAnim = 0;
+    this.hitStop = 0;
+    this.pendingRagdoll = null;
     // Physics floor for ragdolls: the running line in the middle of the track.
     const feetY = CONFIG.groundY + 30;
     this.matter.add.rectangle(this.worldWidth / 2, feetY + 50, this.worldWidth + 2000, 100, { isStatic: true });
@@ -128,7 +134,7 @@ export class RaceScene extends Phaser.Scene {
   // Pop a random exclamation above the goose.
   popWord(words, color, size = 30) {
     const word = words[Math.floor(this.fx.next() * words.length)];
-    const t = this.add.text(this.goose.x + this.fx.range(-20, 40), this.goose.y - 140, word, {
+    const t = this.add.text(this.rig.x + this.fx.range(-20, 40), this.rig.y - 150, word, {
       fontFamily: FONT, fontSize: `${size}px`, fontStyle: 'bold',
       color, stroke: '#ffffff', strokeThickness: 6,
     }).setOrigin(0.5).setDepth(30).setAngle(this.fx.range(-15, 15)).setScale(0.3);
@@ -138,115 +144,88 @@ export class RaceScene extends Phaser.Scene {
     });
   }
 
-  // ---------- goose (greybox shapes) ----------
-  buildGoose() {
-    const c = CONFIG.goose;
-    const goose = this.add.container(START_X, CONFIG.groundY + 30).setDepth(10);
-
-    const legBack = this.add.rectangle(-4, -38, 6, 40, c.legColor).setOrigin(0.5, 0);
-    const legFront = this.add.rectangle(4, -38, 6, 40, c.legColor).setOrigin(0.5, 0);
-    const body = this.add.ellipse(0, -52, 64, 40, c.bodyColor);
-    const tail = this.add.triangle(-34, -58, 0, 8, 14, 0, 14, 16, c.bodyColor);
-    const neck = this.add.rectangle(22, -82, 12, 44, c.bodyColor).setAngle(15);
-    const head = this.add.circle(30, -104, 13, c.bodyColor);
-    const eye = this.add.circle(34, -108, 3, 0x1d2b1f);
-    const beak = this.add.triangle(48, -102, 0, -5, 16, 0, 0, 5, c.beakColor);
-
-    goose.add([legBack, tail, body, neck, head, eye, beak, legFront]);
-    goose.parts = { legBack, legFront, body, neck, head };
-    return goose;
-  }
-
-  animateGoose(r) {
-    const { legBack, legFront, body, neck, head } = this.goose.parts;
-    const speedFrac = r.speed / CONFIG.run.maxSpeed;
-    const phase = r.distance * CONFIG.goose.legCycle;
-    const air = isAirborne(r);
-    if (air) {
-      // Legs tucked, hurdler style.
-      legFront.setAngle(-70);
-      legBack.setAngle(40);
-    } else {
-      const swing = Math.min(1, r.speed / 2) * (35 + 25 * speedFrac);
-      legFront.setAngle(Math.sin(phase) * swing);
-      legBack.setAngle(-Math.sin(phase) * swing);
-    }
-    const bob = air ? 0 : Math.abs(Math.sin(phase)) * Math.min(1, r.speed / 3) * 7;
-    this.goose.y = CONFIG.groundY + 30 - bob - r.height * HPX;
-
-    // Lean hard into it with speed; wobble on stumble.
-    const lean = speedFrac * 22;
-    const wobble = r.stumble > 0 ? Math.sin(this.time.now / 30) * 14 : 0;
-    let angle = lean + wobble;
-    if (this.getUpAnim > 0) {
-      // Clamber back up: from lying tipped back to upright, with a dazed wobble.
-      const t = this.getUpAnim / 0.35; // 1 -> 0
-      angle = -60 * t * t + Math.sin(this.time.now / 40) * 8;
-      this.goose.setScale(1, 1 - 0.3 * t);
-    }
-    this.goose.setAngle(angle);
-    const col = r.stumble > 0 ? CONFIG.goose.stumbleColor : CONFIG.goose.bodyColor;
-    body.setFillStyle(col); neck.setFillStyle(col); head.setFillStyle(col);
-  }
-
-  // ---------- per-tap feedback ----------
+  // ---------- per-event feedback ----------
   onStep() {
     this.lurch = CONFIG.feel.tapLurch;
-    this.goose.setScale(1.06, 0.94);
-    this.time.delayedCall(60, () => this.goose.setScale(1));
-    this.spawnDust(this.goose.x - 6, CONFIG.groundY + 30);
+    this.rig.step();
+    this.spawnDust(this.rig.x - 6, this.rig.y);
   }
 
   onJump() {
-    this.goose.setScale(0.9, 1.12);
-    this.time.delayedCall(90, () => this.goose.setScale(1));
-    for (let i = 0; i < 2; i++) this.spawnDust(this.goose.x - 10, CONFIG.groundY + 30);
+    this.rig.jump();
+    for (let i = 0; i < 2; i++) this.spawnDust(this.rig.x - 10, this.rig.y);
   }
 
   onLand() {
-    this.goose.setScale(1.12, 0.88);
-    this.time.delayedCall(80, () => this.goose.setScale(1));
-    for (let i = 0; i < 3; i++) this.spawnDust(this.goose.x + this.fx.range(-15, 15), CONFIG.groundY + 30);
+    this.rig.land();
+    for (let i = 0; i < 3; i++) this.spawnDust(this.rig.x + this.fx.range(-15, 15), this.rig.y);
   }
 
-  // speedBefore: m/s at the moment of impact (before the rules cut it).
-  // Swap the goose for a ragdoll. kind: CONFIG.ragdoll.crash | CONFIG.ragdoll.trip
-  goRagdoll(speed, kind) {
+  // Freeze-frame, then swap the goose for a ragdoll. kind: CONFIG.ragdoll.crash | .trip
+  goRagdoll(speed, kind, stop) {
+    this.rig.smack();
+    this.rig.draw(); // show the squashed smack during the freeze
+    this.hitStop = stop;
+    this.matter.world.pause();
+    this.pendingRagdoll = { speed, kind };
+    this.impactStar(this.rig.x + 30, this.rig.y - 40, kind === CONFIG.ragdoll.crash ? 1 : 0.6);
+  }
+
+  spawnPendingRagdoll() {
+    const { speed, kind } = this.pendingRagdoll;
+    this.pendingRagdoll = null;
+    this.matter.world.resume();
     const rc = CONFIG.ragdoll;
-    this.goose.setVisible(false);
+    this.rig.setVisible(false);
     this.ragdoll = spawnRagdoll(
-      this,
-      this.goose.x,
-      this.goose.y,
-      { body: CONFIG.goose.bodyColor, beak: CONFIG.goose.beakColor, leg: CONFIG.goose.legColor },
+      this, this.rig.x, this.rig.y, this.colors,
       { vx: (speed * PPM / 60) * rc.launchForward, up: kind.up, spin: kind.spin },
       rc,
+      (x, y, strength) => this.onRagdollImpact(x, y, strength),
     );
+  }
+
+  onRagdollImpact(x, y, strength) {
+    for (let i = 0; i < 2 + Math.round(strength * 4); i++) this.spawnDust(x + this.fx.range(-25, 25), CONFIG.groundY + 30);
+    if (strength > 0.4) this.cameras.main.shake(90, 0.006 * strength);
+  }
+
+  // Cartoon impact star that pops and fades.
+  impactStar(x, y, size) {
+    const g = this.add.graphics().setDepth(28);
+    star(g, { x: 0, y: 0 }, 34 * size, this.fx.range(0, 1), 0xffffff);
+    star(g, { x: 0, y: 0 }, 20 * size, this.fx.range(0, 1), 0xffd23f);
+    g.setPosition(x, y).setScale(0.4);
+    this.tweens.add({ targets: g, scale: 1.3, duration: 110, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: g, alpha: 0, delay: 160, duration: 200, onComplete: () => g.destroy() });
   }
 
   onCrash(h, speedBefore) {
     this.knockOver(h, speedBefore);
-    this.goRagdoll(speedBefore, CONFIG.ragdoll.crash);
-    this.cameras.main.shake(250, CONFIG.feel.crashShake);
-    for (let i = 0; i < 7; i++) this.spawnDust(this.goose.x + this.fx.range(-25, 25), CONFIG.groundY + 30);
-    featherBurst(this, this.fx, this.goose.x, this.goose.y - 50, 12);
+    this.goRagdoll(speedBefore, CONFIG.ragdoll.crash, CONFIG.feel.hitStop);
+    this.cameras.main.shake(260, CONFIG.feel.crashShake);
+    for (let i = 0; i < 7; i++) this.spawnDust(this.rig.x + this.fx.range(-25, 25), this.rig.y);
+    featherBurst(this, this.fx, this.rig.x, this.rig.y - 50, 12);
     this.popWord(CONFIG.feel.crashWords, '#ff4b3e', 34);
   }
 
-  onGetUp() {
-    this.ragdoll?.destroy();
-    this.ragdoll = null;
-    this.goose.setVisible(true);
-    this.getUpAnim = 0.35;
-    for (let i = 0; i < 3; i++) this.spawnDust(this.goose.x + this.fx.range(-20, 20), CONFIG.groundY + 30);
-  }
-
   onStumble() {
-    this.goRagdoll(this.runner.speed, CONFIG.ragdoll.trip);
-    featherBurst(this, this.fx, this.goose.x, this.goose.y - 50, 5);
+    this.goRagdoll(this.runner.speed, CONFIG.ragdoll.trip, CONFIG.feel.tripHitStop);
+    featherBurst(this, this.fx, this.rig.x, this.rig.y - 50, 5);
     this.popWord(CONFIG.feel.tripWords, '#f2a33a', 26);
     this.cameras.main.shake(180, CONFIG.feel.stumbleShake);
-    for (let i = 0; i < 4; i++) this.spawnDust(this.goose.x + this.fx.range(-20, 20), CONFIG.groundY + 30);
+    for (let i = 0; i < 4; i++) this.spawnDust(this.rig.x + this.fx.range(-20, 20), this.rig.y);
+  }
+
+  onGetUp() {
+    if (this.ragdoll) {
+      this.rig.getUpFrom(this.ragdoll);
+      this.ragdoll.destroy();
+      this.ragdoll = null;
+    }
+    this.rig.setVisible(true);
+    this.rig.land();
+    for (let i = 0; i < 4; i++) this.spawnDust(this.rig.x + this.fx.range(-20, 20), this.rig.y);
   }
 
   spawnDust(x, y) {
@@ -373,6 +352,14 @@ export class RaceScene extends Phaser.Scene {
     const dt = Math.min(deltaMs / 1000, 0.05);
     const r = this.runner;
 
+    // Hit-stop: freeze everything for a beat on impact, then launch the ragdoll.
+    if (this.hitStop > 0) {
+      this.hitStop -= dt;
+      this.actions.length = 0;
+      if (this.hitStop <= 0 && this.pendingRagdoll) this.spawnPendingRagdoll();
+      return;
+    }
+
     for (const a of this.actions) {
       const result = applyAction(r, a);
       if (result === 'step') this.onStep();
@@ -380,6 +367,8 @@ export class RaceScene extends Phaser.Scene {
       else if (result === 'jump') this.onJump();
     }
     this.actions.length = 0;
+    if (this.hitStop > 0) return; // a trip just started a freeze-frame
+
     const ev = updateRunner(r, dt);
     if (ev === 'land') this.onLand();
     else if (ev === 'getUp') this.onGetUp();
@@ -390,20 +379,29 @@ export class RaceScene extends Phaser.Scene {
       const speedBefore = r.speed;
       crashRunner(r);
       this.onCrash(hit, speedBefore);
-    }
-    if (this.getUpAnim > 0) {
-      this.getUpAnim = Math.max(0, this.getUpAnim - dt);
-      if (this.getUpAnim === 0) this.goose.setScale(1);
+      return;
     }
 
     // Lurch decays back to zero quickly after each tap.
     this.lurch = Math.max(0, this.lurch - 60 * dt);
-    this.goose.x = START_X + r.distance * PPM + this.lurch;
-    this.animateGoose(r);
-    this.ragdoll?.update(this.goose.x, (r.speed * PPM) / 60);
+    const x = START_X + r.distance * PPM + this.lurch;
+    const frac = r.speed / CONFIG.run.maxSpeed;
+    this.rig.update({
+      x,
+      y: CONFIG.groundY + 30 - r.height * HPX,
+      speedFrac: frac,
+      speedPx: r.speed * PPM,
+      phase: r.distance * CONFIG.goose.legCycle,
+      air: isAirborne(r),
+      dt,
+    });
+    this.rig.draw();
+    if (this.ragdoll) {
+      this.ragdoll.update(x, (r.speed * PPM) / 60, dt);
+      this.ragdoll.draw(this.time.now / 1000);
+    }
 
     // Camera leads further ahead the faster you go.
-    const frac = r.speed / CONFIG.run.maxSpeed;
     const g = CONFIG.goose;
     const targetLead = g.screenX + (g.screenXFast - g.screenX) * frac;
     this.camLead += (targetLead - this.camLead) * Math.min(1, 3 * dt);
