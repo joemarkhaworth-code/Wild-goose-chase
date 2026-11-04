@@ -3,7 +3,7 @@ import { makeRng } from '../rng.js';
 import { createRunner, applyAction, updateRunner, crashRunner, isAirborne, isDown } from '../rules/runner.js';
 import { generateHurdles, findCollision } from '../rules/track.js';
 import { createTouchAndKeyControls } from '../input/controls.js';
-import { spawnRagdoll } from './ragdoll.js';
+import { spawnRagdoll, featherBurst, launchHurdle } from './ragdoll.js';
 
 const PPM = CONFIG.pixelsPerMetre;
 const START_X = 200; // world x (px) of the start line
@@ -26,6 +26,8 @@ export class RaceScene extends Phaser.Scene {
     this.buildScenery();
     this.hurdles = generateHurdles(this.rng, CONFIG.track, CONFIG.trackLength);
     this.buildHurdles();
+    // Separate RNG for cosmetic effects so they never shift gameplay randomness.
+    this.fx = makeRng((this.seed ^ 0x9e3779b9) >>> 0);
     this.goose = this.buildGoose();
     this.ragdoll = null;
     this.getUpAnim = 0;
@@ -117,8 +119,23 @@ export class RaceScene extends Phaser.Scene {
     }
   }
 
-  knockOver(h) {
-    this.tweens.add({ targets: h.view, angle: 85, duration: 220, ease: 'Quad.easeIn' });
+  // The hurdle goes flying: swap the static view for a cartwheeling physics bar.
+  knockOver(h, speed) {
+    h.view.setVisible(false);
+    launchHurdle(this, h.view.x, CONFIG.groundY + 30, h.height * HPX, (speed * PPM) / 60);
+  }
+
+  // Pop a random exclamation above the goose.
+  popWord(words, color, size = 30) {
+    const word = words[Math.floor(this.fx.next() * words.length)];
+    const t = this.add.text(this.goose.x + this.fx.range(-20, 40), this.goose.y - 140, word, {
+      fontFamily: FONT, fontSize: `${size}px`, fontStyle: 'bold',
+      color, stroke: '#ffffff', strokeThickness: 6,
+    }).setOrigin(0.5).setDepth(30).setAngle(this.fx.range(-15, 15)).setScale(0.3);
+    this.tweens.add({ targets: t, scale: 1, duration: 120, ease: 'Back.easeOut' });
+    this.tweens.add({
+      targets: t, y: t.y - 50, alpha: 0, delay: 350, duration: 650, onComplete: () => t.destroy(),
+    });
   }
 
   // ---------- goose (greybox shapes) ----------
@@ -189,7 +206,7 @@ export class RaceScene extends Phaser.Scene {
   onLand() {
     this.goose.setScale(1.12, 0.88);
     this.time.delayedCall(80, () => this.goose.setScale(1));
-    for (let i = 0; i < 3; i++) this.spawnDust(this.goose.x + this.rng.range(-15, 15), CONFIG.groundY + 30);
+    for (let i = 0; i < 3; i++) this.spawnDust(this.goose.x + this.fx.range(-15, 15), CONFIG.groundY + 30);
   }
 
   // speedBefore: m/s at the moment of impact (before the rules cut it).
@@ -208,17 +225,12 @@ export class RaceScene extends Phaser.Scene {
   }
 
   onCrash(h, speedBefore) {
-    this.knockOver(h);
+    this.knockOver(h, speedBefore);
     this.goRagdoll(speedBefore, CONFIG.ragdoll.crash);
     this.cameras.main.shake(250, CONFIG.feel.crashShake);
-    for (let i = 0; i < 7; i++) this.spawnDust(this.goose.x + this.rng.range(-25, 25), CONFIG.groundY + 30);
-    const bonk = this.add.text(this.goose.x, this.goose.y - 130, 'BONK!', {
-      fontFamily: FONT, fontSize: '30px', fontStyle: 'bold',
-      color: '#ff4b3e', stroke: '#ffffff', strokeThickness: 6,
-    }).setOrigin(0.5).setDepth(30);
-    this.tweens.add({
-      targets: bonk, y: bonk.y - 40, alpha: 0, duration: 700, onComplete: () => bonk.destroy(),
-    });
+    for (let i = 0; i < 7; i++) this.spawnDust(this.goose.x + this.fx.range(-25, 25), CONFIG.groundY + 30);
+    featherBurst(this, this.fx, this.goose.x, this.goose.y - 50, 12);
+    this.popWord(CONFIG.feel.crashWords, '#ff4b3e', 34);
   }
 
   onGetUp() {
@@ -226,21 +238,23 @@ export class RaceScene extends Phaser.Scene {
     this.ragdoll = null;
     this.goose.setVisible(true);
     this.getUpAnim = 0.35;
-    for (let i = 0; i < 3; i++) this.spawnDust(this.goose.x + this.rng.range(-20, 20), CONFIG.groundY + 30);
+    for (let i = 0; i < 3; i++) this.spawnDust(this.goose.x + this.fx.range(-20, 20), CONFIG.groundY + 30);
   }
 
   onStumble() {
     this.goRagdoll(this.runner.speed, CONFIG.ragdoll.trip);
+    featherBurst(this, this.fx, this.goose.x, this.goose.y - 50, 5);
+    this.popWord(CONFIG.feel.tripWords, '#f2a33a', 26);
     this.cameras.main.shake(180, CONFIG.feel.stumbleShake);
-    for (let i = 0; i < 4; i++) this.spawnDust(this.goose.x + this.rng.range(-20, 20), CONFIG.groundY + 30);
+    for (let i = 0; i < 4; i++) this.spawnDust(this.goose.x + this.fx.range(-20, 20), CONFIG.groundY + 30);
   }
 
   spawnDust(x, y) {
-    const puff = this.add.circle(x, y, this.rng.range(5, 9), 0xe9d3b0, 0.9).setDepth(9);
+    const puff = this.add.circle(x, y, this.fx.range(5, 9), 0xe9d3b0, 0.9).setDepth(9);
     this.tweens.add({
       targets: puff,
-      x: x - this.rng.range(20, 45),
-      y: y - this.rng.range(8, 22),
+      x: x - this.fx.range(20, 45),
+      y: y - this.fx.range(8, 22),
       scale: 2.2,
       alpha: 0,
       duration: 380,
@@ -296,8 +310,8 @@ export class RaceScene extends Phaser.Scene {
     this.speedLines = [];
     for (let i = 0; i < 14; i++) {
       const line = this.add.rectangle(
-        this.rng.range(0, width), this.rng.range(110, CONFIG.groundY - 10),
-        this.rng.range(60, 160), 3, 0xffffff, 0,
+        this.fx.range(0, width), this.fx.range(110, CONFIG.groundY - 10),
+        this.fx.range(60, 160), 3, 0xffffff, 0,
       ).setScrollFactor(0).setDepth(15);
       this.speedLines.push(line);
     }
@@ -311,8 +325,8 @@ export class RaceScene extends Phaser.Scene {
     for (const line of this.speedLines) {
       line.x -= r.speed * PPM * 2.2 * dt;
       if (line.x < -line.width) {
-        line.x = width + this.rng.range(0, 200);
-        line.y = this.rng.range(110, CONFIG.groundY - 10);
+        line.x = width + this.fx.range(0, 200);
+        line.y = this.fx.range(110, CONFIG.groundY - 10);
       }
       line.setFillStyle(0xffffff, alpha);
     }

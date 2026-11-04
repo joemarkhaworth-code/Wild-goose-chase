@@ -59,17 +59,19 @@ export const CONFIG = {
     maxSpeedShake: 0.0015, // camera shake intensity at top speed
     stumbleShake: 0.008,
     crashShake: 0.02,
+    crashWords: ['BONK!', 'HONK!', 'OOF!', 'SPLAT!', 'THWACK!', 'KER-HONK!', 'NOT THE FACE!'],
+    tripWords: ['WHOOPS!', 'OOPS!', 'HONK?', 'EEP!', 'FLAP!'],
   },
 
   // Ragdoll (Matter.js, pixels / Matter units)
   ragdoll: {
-    crash: { up: 8, spin: 0.22 },  // hurdle hit: big launch and spin (px per step)
+    crash: { up: 9, spin: 0.28 },  // hurdle hit: big launch and spin (px per step)
     trip: { up: 3, spin: 0.3 },    // same-side tap: low faceplant
     launchForward: 1.0,    // fraction of run speed carried into the ragdoll
-    follow: 0.12,          // how hard the torso tracks the rules speed/position (0..1)
+    follow: 0.25,          // how hard the torso tracks the rules speed/position (0..1)
     friction: 0.05,        // low so it slides and rolls along the track
     restitution: 0.35,     // bounciness
-    stiffness: 0.9,        // joint stiffness (lower = floppier)
+    stiffness: 0.6,        // joint stiffness (lower = floppier)
   },
 
   // Controls

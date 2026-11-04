@@ -75,3 +75,4 @@ Later (not now)
 - Running should feel fast and punchy, Track & Field style: top speed needs ~10 alternating taps/sec, every tap gives visible kick (lurch, dust, button punch), and speed cues (track dashes, fast foreground, speed lines, segmented power meter with MAX!). Playtested and approved after step 1.
 - Hurdle jumps were "too hard but just" at a ~200 ms timing window; eased to ~300 ms at top speed (higher, floatier jump). Keep it tight but fair.
 - Ragdolls keep momentum: a crash carries ~95% of speed into a long tumble down the track, and you get up still moving. Same-side taps also ragdoll (a quick faceplant trip), not just a stumble.
+- Ragdolls should be slapstick: floppy 3-part neck, flailing wings and feet, X eyes, feather bursts, the hurdle cartwheels away, and a random exclamation (crash and trip word lists in config). Cosmetic randomness uses a separate RNG from gameplay.
