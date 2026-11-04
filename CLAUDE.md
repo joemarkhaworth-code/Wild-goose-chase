@@ -21,6 +21,7 @@ A side-on 2D sports-day sprint based on the Wild Goose Chase card game. A flock 
 - Stack: Phaser 3 with its built-in Matter.js physics (for ragdolls). Plain JavaScript (ES modules). No build step unless needed.
 - Deploys to GitHub Pages on every push to main.
 - Work directly on main. One step per session. Before finishing, the game must load and be playable, and the change must be committed.
+- After every push, give the user the play link https://joemarkhaworth-code.github.io/Wild-goose-chase/ and the version code it will show at the bottom of the screen (the short commit hash).
 - Greybox until the art pass: geese are simple shapes (body, neck, head, legs joined by physics constraints), obstacles are coloured blocks.
 
 ## Architecture rules
