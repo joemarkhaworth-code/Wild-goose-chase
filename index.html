@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3a0d12">
+  <title>Ticket to the World</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Courier+Prime:wght@400;700&family=Limelight&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" id="css">
+</head>
+<body>
+  <header>
+    <h1>Ticket <small>to the</small> World</h1>
+    <button id="bookBtn" aria-label="Open ticket book">
+      <span class="book-icon">📖</span><span id="bookCount">0</span>
+    </button>
+  </header>
+
+  <main>
+    <section id="globeSide">
+      <div id="globeWrap"><canvas id="globe"></canvas></div>
+      <div id="countryLabel"></div>
+    </section>
+    <section id="machineSide">
+      <button id="spinBtn">SPIN</button>
+      <div id="machine">
+        <div class="machine-plate">★ BOX OFFICE ★</div>
+        <div class="slot"></div>
+        <div id="ticketBay"></div>
+      </div>
+      <p id="hint"></p>
+    </section>
+  </main>
+
+  <div id="book" hidden>
+    <div class="book-cover">
+      <div class="book-head">
+        <h2>My Ticket Book</h2>
+        <button class="book-close" aria-label="Close">✕</button>
+      </div>
+      <div class="book-stats"></div>
+      <div class="book-page"><div class="book-grid"></div></div>
+    </div>
+    <div class="book-detail" hidden></div>
+  </div>
+
+  <div id="version"></div>
+
+  <script src="vendor/d3-array.min.js"></script>
+  <script src="vendor/d3-geo.min.js"></script>
+  <script src="vendor/topojson-client.min.js"></script>
+  <script>
+    // Always run the newest deploy, even if this page is cached.
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : { v: 'dev' }))
+      .catch(() => ({ v: 'dev' }))
+      .then(({ v }) => {
+        window.APP_VERSION = v;
+        document.getElementById('css').href = 'style.css?v=' + v;
+        const s = document.createElement('script');
+        s.type = 'module';
+        s.src = 'src/main.js?v=' + v;
+        document.body.appendChild(s);
+      });
+  </script>
+</body>
+</html>
